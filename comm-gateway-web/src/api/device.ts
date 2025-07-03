@@ -36,12 +36,11 @@ export function getDevices(params?: DeviceQuery) {
   })
 }
 
-// 获取所有设备（可选按设备组筛选）
-export function getAllDevices(deviceGroupId?: number) {
+// 获取所有设备（不分页，后端不支持参数筛选）
+export function getAllDevices() {
   return request<Device[]>({
     url: '/api/Device',
-    method: 'get',
-    params: deviceGroupId ? { deviceGroupId } : undefined
+    method: 'get'
   })
 }
 

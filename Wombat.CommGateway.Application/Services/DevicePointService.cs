@@ -81,23 +81,7 @@ namespace Wombat.CommGateway.Application.Services
         /// <inheritdoc/>
         public async Task<int> CreatePointAsync(CreateDevicePointDto dto)
         {
-            var point = new DevicePoint(
-                dto.Name,
-                dto.DeviceId,
-                dto.Address,
-                dto.DataType,
-                dto.ReadWrite,
-                dto.ScanRate,
-                dto.Enable,
-                dto.Remark
-            );
-            
-            // 设置Properties字段
-            if (dto.Properties != null)
-            {
-                point.Properties = dto.Properties;
-            }
-            
+            var point = _mapper.Map<DevicePoint>(dto);           
             await _pointRepository.InsertAsync(point);
             return point.Id;
         }
@@ -158,13 +142,12 @@ namespace Wombat.CommGateway.Application.Services
 
 
         /// <inheritdoc/>
-        public async Task UpdatePointStatusAsync(int pointId, bool isEnabled)
+        public async Task UpdatePointStatusAsync(int pointId, bool enable)
         {
             var point = await _pointRepository.GetByIdAsync(pointId);
             if (point == null) 
                 throw new ArgumentException($"Point with id {pointId} not found.");
-                
-            point.UpdateStatus(isEnabled);
+            point.Enable = enable;
             await _pointRepository.UpdateAsync(point);
         }
 
@@ -177,12 +160,6 @@ namespace Wombat.CommGateway.Application.Services
                 
             if (!string.IsNullOrEmpty(updateDevicePointDto.Name))
                 point.UpdateName(updateDevicePointDto.Name);
-            if (!string.IsNullOrEmpty(updateDevicePointDto.Address))
-                point.UpdateAddress(updateDevicePointDto.Address);
-            if (updateDevicePointDto.ScanRate > 0)
-                point.UpdateScanRate(updateDevicePointDto.ScanRate);
-            if (updateDevicePointDto.Enable.HasValue)
-                point.UpdateStatus(updateDevicePointDto.Enable.Value);
                 
             await _pointRepository.UpdateAsync(point);
         }

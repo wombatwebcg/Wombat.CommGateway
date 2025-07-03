@@ -40,26 +40,8 @@ namespace Wombat.CommGateway.Infrastructure.Repositories
             return await Select.Where(x => x.Id == id).FirstAsync();
         }
 
-        /// <inheritdoc/>
-        public async Task<bool> InsertAsync(DevicePoint devicePoint)
-        {
-            await InsertAsync(devicePoint);
-            return devicePoint.Id > 0;
-        }
 
-        /// <inheritdoc/>
-        public async Task<bool> UpdateAsync(DevicePoint devicePoint)
-        {
-            await UpdateAsync(devicePoint);
-            return true;
-        }
 
-        /// <inheritdoc/>
-        public async Task<bool> DeleteAsync(DevicePoint devicePoint)
-        {
-            await DeleteAsync(devicePoint);
-            return true;
-        }
 
         /// <inheritdoc/>
         public async Task<IEnumerable<DevicePoint>> GetDevicePointsAsync(int deviceId)

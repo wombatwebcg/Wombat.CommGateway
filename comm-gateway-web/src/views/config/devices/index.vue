@@ -403,15 +403,14 @@ const handleNodeClick = (data: DeviceGroupDto) => {
 const getDevices = async () => {
   loading.value = true
   try {
-    let res
-    // 如果选择了特定设备组（非"全部"），则传递deviceGroupId参数
+    const res = await getAllDevices()
+    let filteredDevices = Array.isArray(res) ? [...res] : []
+    // 如果选择了特定设备组（非"全部"），则进行本地筛选
     if (selectedGroupId.value && selectedGroupId.value !== 0) {
-      res = await getAllDevices(selectedGroupId.value)
-    } else {
-      res = await getAllDevices()
+      filteredDevices = filteredDevices.filter(device => device.deviceGroupId === selectedGroupId.value)
     }
-    devices.value = Array.isArray(res) ? [...res] : []
-    total.value = devices.value.length
+    devices.value = filteredDevices
+    total.value = filteredDevices.length
   } catch (error) {
     console.error('获取设备列表失败:', error)
     ElMessage.error('获取设备列表失败')

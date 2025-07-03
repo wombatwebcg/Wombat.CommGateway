@@ -48,10 +48,6 @@ namespace Wombat.CommGateway.Domain.Entities
         /// </summary>
         public DateTime UpdateTime { get; set; }
 
-        /// <summary>
-        /// 设备组ID
-        /// </summary>
-        /// 
 
 
         /// <summary>
@@ -150,52 +146,8 @@ namespace Wombat.CommGateway.Domain.Entities
             UpdateTime = DateTime.Now;
         }
 
-        /// <summary>
-        /// 更新点位地址
-        /// </summary>
-        /// <param name="address">点位地址</param>
-        public void UpdateAddress(string address)
-        {
-            if (string.IsNullOrWhiteSpace(address))
-                throw new ArgumentException("点位地址不能为空", nameof(address));
 
-            Address = address;
-            UpdateTime = DateTime.Now;
-        }
 
-        /// <summary>
-        /// 更新数据类型
-        /// </summary>
-        /// <param name="dataType">数据类型</param>
-        public void UpdateDataType(DataType dataType)
-        {
-            DataType = dataType;
-            UpdateTime = DateTime.Now;
-        }
-
-        /// <summary>
-        /// 更新扫描周期
-        /// </summary>
-        /// <param name="scanRate">扫描周期</param>
-        public void UpdateScanRate(int scanRate)
-        {
-            if (scanRate <= 0)
-                throw new ArgumentException("扫描周期必须大于0", nameof(scanRate));
-
-            ScanRate = scanRate;
-            UpdateTime = DateTime.Now;
-        }
-
-        /// <summary>
-        /// 更新点位状态
-        /// </summary>
-        /// <param name="isEnabled">是否启用</param>
-        public void UpdateStatus(bool isEnabled)
-        {
-            Enable = isEnabled;
-            Enable = isEnabled;
-            UpdateTime = DateTime.Now;
-        }
 
         /// <summary>
         /// 更新点位属性

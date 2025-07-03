@@ -25,26 +25,6 @@ namespace Wombat.CommGateway.Domain.Repositories
         /// <returns>设备点位</returns>
         Task<DevicePoint> GetByIdAsync(int id);
 
-        /// <summary>
-        /// 插入设备点位
-        /// </summary>
-        /// <param name="devicePoint">设备点位</param>
-        /// <returns>插入结果</returns>
-        Task<bool> InsertAsync(DevicePoint devicePoint);
-
-        /// <summary>
-        /// 更新设备点位
-        /// </summary>
-        /// <param name="devicePoint">设备点位</param>
-        /// <returns>更新结果</returns>
-        Task<bool> UpdateAsync(DevicePoint devicePoint);
-
-        /// <summary>
-        /// 删除设备点位
-        /// </summary>
-        /// <param name="devicePoint">设备点位</param>
-        /// <returns>删除结果</returns>
-        Task<bool> DeleteAsync(DevicePoint devicePoint);
 
         /// <summary>
         /// 获取设备点位列表

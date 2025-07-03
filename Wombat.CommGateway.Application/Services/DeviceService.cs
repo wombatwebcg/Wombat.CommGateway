@@ -40,10 +40,7 @@ namespace Wombat.CommGateway.Application.Services
             }
             
             
-            if (query.Status.HasValue)
-            {
-                filteredDevices = filteredDevices.Where(d => d.Enable == (query.Status.Value == DeviceStatus.Running));
-            }
+
 
             var total = filteredDevices.Count();
             
@@ -100,13 +97,8 @@ namespace Wombat.CommGateway.Application.Services
         public async Task UpdateDeviceAsync(int id, UpdateDeviceDto dto)
         {
             var device = await _deviceRepository.GetByIdAsync(id);
-            if (device == null)
-                throw new ArgumentException($"Device with id {id} not found.");
-
-            device.UpdateName(dto.Name);
-            device.Description = dto.Description;
-            device.Enable = dto.Enable;
-
+            _mapper.Map(dto, device);
+            device.Id = id;
             await _deviceRepository.UpdateAsync(device);
         }
 

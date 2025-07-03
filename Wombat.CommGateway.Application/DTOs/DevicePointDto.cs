@@ -90,7 +90,7 @@ namespace Wombat.CommGateway.Application.DTOs
         public int ScanRate { get; set; }
         public bool Enable { get; set; }
         public string Remark { get; set; }
-        public Dictionary<string, string> Properties { get; set; }
+        public Dictionary<string, string>? Properties { get; set; }
     }
 
     /// <summary>

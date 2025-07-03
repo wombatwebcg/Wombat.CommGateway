@@ -105,18 +105,7 @@ namespace Wombat.CommGateway.Domain.Entities
             UpdateTime = DateTime.Now;
         }
 
-        /// <summary>
-        /// 更新设备名称
-        /// </summary>
-        /// <param name="name">设备名称</param>
-        public void UpdateName(string name)
-        {
-            if (string.IsNullOrWhiteSpace(name))
-                throw new ArgumentException("设备名称不能为空", nameof(name));
 
-            Name = name;
-            UpdateTime = DateTime.Now;
-        }
 
 
 

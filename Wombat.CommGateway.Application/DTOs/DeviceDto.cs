@@ -78,7 +78,7 @@ namespace Wombat.CommGateway.Application.DTOs
         public int? Page { get; set; }
         public int? PageSize { get; set; }
         public string Name { get; set; }
-        public DeviceStatus? Status { get; set; }
+
     }
 
     /// <summary>
@@ -107,11 +107,6 @@ namespace Wombat.CommGateway.Application.DTOs
 
 
         /// <summary>
-        /// 设备状态
-        /// </summary>
-        public DeviceStatus Status { get; set; }
-
-        /// <summary>
         /// 是否启用
         /// </summary>
         public bool Enable { get; set; }
@@ -133,45 +128,36 @@ namespace Wombat.CommGateway.Application.DTOs
     /// </summary>
     public class UpdateDeviceDto
     {
-        /// <summary>
-        /// 设备名称
-        /// </summary>
+
         public string Name { get; set; }
 
-        /// <summary>
-        /// 设备描述
-        /// </summary>
+
         public string Description { get; set; }
 
 
 
-        /// <summary>
-        /// 设备状态
-        /// </summary>
-        public DeviceStatus Status { get; set; }
 
-        /// <summary>
-        /// 是否启用
-        /// </summary>
         public bool Enable { get; set; }
 
 
 
-        /// <summary>
-        /// 通信通道ID
-        /// </summary>
+
         public int ChannelId { get; set; }
 
 
 
 
-        /// <summary>
-        /// 设备组ID
-        /// </summary>
         public int DeviceGroupId { get; set; }
+
+
+        public string ChannelName { get; set; }
+
+        public string DeviceGroupName
+        {
+            get; set;
+        }
+
     }
-
-
 
     /// <summary>
     /// 更新设备启用状态数据传输对象
