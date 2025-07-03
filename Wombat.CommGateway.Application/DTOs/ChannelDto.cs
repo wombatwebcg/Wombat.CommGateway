@@ -22,17 +22,27 @@ namespace Wombat.CommGateway.Application.DTOs
         /// <summary>
         /// 通道类型
         /// </summary>
-        public string ChannelType { get; set; }
+        public int Type { get; set; }
 
         /// <summary>
-        /// 通道配置
+        /// 通道协议
         /// </summary>
-        public string Configuration { get; set; }
+        public int Protocol { get; set; }
+
+        /// <summary>
+        /// 通道角色
+        /// </summary>
+        public int Role { get; set; }
+
+        /// <summary>
+        /// 通道状态
+        /// </summary>
+        public int Status { get; set; }
 
         /// <summary>
         /// 是否启用
         /// </summary>
-        public bool IsEnabled { get; set; }
+        public bool Enable { get; set; }
 
         /// <summary>
         /// 创建时间
@@ -40,14 +50,9 @@ namespace Wombat.CommGateway.Application.DTOs
         public DateTime CreateTime { get; set; }
 
         /// <summary>
-        /// 更新时间
+        /// 通道配置
         /// </summary>
-        public DateTime? UpdateTime { get; set; }
-
-        /// <summary>
-        /// 备注
-        /// </summary>
-        public string Remark { get; set; }
+        public Dictionary<string, string> Configuration { get; set; }
     }
 
     /// <summary>
@@ -63,22 +68,32 @@ namespace Wombat.CommGateway.Application.DTOs
         /// <summary>
         /// 通道类型
         /// </summary>
-        public string ChannelType { get; set; }
+        public int Type { get; set; }
 
         /// <summary>
-        /// 通道配置
+        /// 通道协议
         /// </summary>
-        public string Configuration { get; set; }
+        public int Protocol { get; set; }
+
+        /// <summary>
+        /// 通道角色
+        /// </summary>
+        public int Role { get; set; }
 
         /// <summary>
         /// 是否启用
         /// </summary>
-        public bool IsEnabled { get; set; }
+        public bool Enable { get; set; }
 
         /// <summary>
-        /// 备注
+        /// 通道状态
         /// </summary>
-        public string Remark { get; set; }
+        public int Status { get; set; }
+
+        /// <summary>
+        /// 通道配置
+        /// </summary>
+        public Dictionary<string, string> Configuration { get; set; }
     }
 
     /// <summary>
@@ -99,23 +114,41 @@ namespace Wombat.CommGateway.Application.DTOs
         /// <summary>
         /// 通道类型
         /// </summary>
-        public string ChannelType { get; set; }
+        public int Type { get; set; }
+
+        /// <summary>
+        /// 通道协议
+        /// </summary>
+        public int Protocol { get; set; }
+
+        /// <summary>
+        /// 通道角色
+        /// </summary>
+        public int? Role { get; set; }
 
         /// <summary>
         /// 通道配置
         /// </summary>
-        public string Configuration { get; set; }
+        public Dictionary<string, string> Configuration { get; set; }
 
         /// <summary>
         /// 是否启用
         /// </summary>
-        public bool IsEnabled { get; set; }
-
-        /// <summary>
-        /// 备注
-        /// </summary>
-        public string Remark { get; set; }
+        public bool Enable { get; set; }
     }
 
+    public class UpdateChannelStatusDto
+    {
+        public int Status { get; set; }
+    }
 
+    public class UpdateChannelEnableDto
+    {
+        public bool Enable { get; set; }
+    }
+
+    public class ChannelNameListDto
+    {
+        public string Name { get; set; }
+    }
 } 

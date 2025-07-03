@@ -26,9 +26,9 @@ namespace Wombat.CommGateway.API.Controllers
         /// 创建通信通道
         /// </summary>
         [HttpPost]
-        public async Task<ActionResult<Channel>> CreateChannel([FromBody] CreateChannelRequest request)
+        public async Task<ActionResult<ChannelDto>> CreateChannel([FromBody] CreateChannelDto dto)
         {
-            var channel = await _channelService.CreateAsync(new Application.DTOs.CreateChannelRequest(){ Name = request.Name, Type = request.Type, ProtocolConfigId = request.ProtocolConfigId });
+            var channel = await _channelService.CreateAsync(dto);
             return Success(channel);
         }
 
@@ -36,9 +36,19 @@ namespace Wombat.CommGateway.API.Controllers
         /// 更新通道状态
         /// </summary>
         [HttpPut("{id}/status")]
-        public async Task<IActionResult> UpdateChannelStatus(int id, [FromBody] UpdateChannelStatusRequest request)
+        public async Task<IActionResult> UpdateChannelStatus(int id, [FromBody] UpdateChannelStatusDto dto)
         {
-            await _channelService.UpdateStatusAsync(id, request.Status);
+            await _channelService.UpdateStatusAsync(id, dto.Status);
+            return Success();
+        }
+
+        /// <summary>
+        /// 更新通道启用状态
+        /// </summary>
+        [HttpPut("{id}/enable")]
+        public async Task<IActionResult> UpdateChannelEnable(int id, [FromBody] UpdateChannelEnableDto dto)
+        {
+            await _channelService.UpdateEnableAsync(id, dto.Enable);
             return Success();
         }
 
@@ -46,17 +56,28 @@ namespace Wombat.CommGateway.API.Controllers
         /// 获取通道列表
         /// </summary>
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Channel>>> GetChannels()
+        public async Task<ActionResult<IEnumerable<ChannelDto>>> GetChannels()
         {
             var channels = await _channelService.GetListAsync();
             return Success(channels);
         }
 
         /// <summary>
+        /// 获取通道名称列表
+        /// </summary>
+        [HttpGet("nameList")]
+        public async Task<ActionResult<List<string>>> GetChannelNameList()
+        {
+            var channels = await _channelService.GetListAsync();
+            var nameList = channels.Select(c => c.Name).ToList();
+            return Success(nameList);
+        }
+
+        /// <summary>
         /// 获取通道详情
         /// </summary>
         [HttpGet("{id}")]
-        public async Task<ActionResult<Channel>> GetChannel(int id)
+        public async Task<ActionResult<ChannelDto>> GetChannel(int id)
         {
             var channel = await _channelService.GetByIdAsync(id);
             if (channel == null)
@@ -70,7 +91,7 @@ namespace Wombat.CommGateway.API.Controllers
         [HttpPut("{id}/configuration")]
         public async Task<IActionResult> UpdateChannelConfiguration(int id, [FromBody] Dictionary<string, string> configuration)
         {
-            await _channelService.UpdateAsync(id, new UpdateChannelRequest(){Configuration = configuration});
+            await _channelService.UpdateConfigurationAsync(id, configuration);
             return Success();
         }
 
@@ -103,17 +124,5 @@ namespace Wombat.CommGateway.API.Controllers
             await _channelService.StopAsync(id);
             return Success();
         }
-    }
-
-    public class CreateChannelRequest
-    {
-        public string Name { get; set; }
-        public ChannelType Type { get; set; }
-        public int ProtocolConfigId { get; set; }
-    }
-
-    public class UpdateChannelStatusRequest
-    {
-        public ChannelStatus Status { get; set; }
     }
 } 

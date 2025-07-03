@@ -26,8 +26,17 @@ namespace Wombat.CommGateway.Application.Interfaces
         Task<ChannelDto> CreateAsync(CreateChannelDto dto);
 
 
-        Task<ChannelDto> UpdateStatusAsync(int id, ChannelStatus status);
+        Task<ChannelDto> UpdateStatusAsync(int id, int status);
 
+        /// <summary>
+        /// 更新通道配置
+        /// </summary>
+        Task<ChannelDto> UpdateConfigurationAsync(int id, Dictionary<string, string> configuration);
+
+        /// <summary>
+        /// 更新通道启用状态
+        /// </summary>
+        Task<ChannelDto> UpdateEnableAsync(int id, bool enable);
 
         /// <summary>
         /// 更新通道

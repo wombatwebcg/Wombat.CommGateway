@@ -57,7 +57,7 @@ namespace Wombat.CommGateway.Infrastructure.Repositories
         /// <inheritdoc/>
         public async Task<List<ProtocolConfig>> GetEnabledConfigsAsync()
         {
-            return await Select.Where(p => p.IsEnabled).ToListAsync();
+            return await Select.Where(p => p.Enable).ToListAsync();
         }
     }
 } 

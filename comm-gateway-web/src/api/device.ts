@@ -4,11 +4,12 @@ export interface Device {
   id: number
   name: string
   description?: string
-  type?: string
-  status?: string
   enable?: boolean
   properties?: Record<string, string>
+  deviceGroupName?: string
   deviceGroupId?: number
+  channelName?: string
+  channelId?: number
   createTime?: string
   updateTime?: string
 }
@@ -35,11 +36,12 @@ export function getDevices(params?: DeviceQuery) {
   })
 }
 
-// 获取所有设备（不分页）
-export function getAllDevices() {
+// 获取所有设备（可选按设备组筛选）
+export function getAllDevices(deviceGroupId?: number) {
   return request<Device[]>({
     url: '/api/Device',
-    method: 'get'
+    method: 'get',
+    params: deviceGroupId ? { deviceGroupId } : undefined
   })
 }
 

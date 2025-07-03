@@ -12,29 +12,31 @@ namespace Wombat.CommGateway.Infrastructure.Repositories
     /// <summary>
     /// 网关设备仓储实现
     /// </summary>
-    [AutoInject(typeof(IGatewayDeviceRepository), ServiceLifetime = ServiceLifetime.Scoped)]
-    public class GatewayDeviceRepository : BaseRepository<GatewayDevice, GatawayDB>, IGatewayDeviceRepository
+    [AutoInject(typeof(IDeviceRepository), ServiceLifetime = ServiceLifetime.Scoped)]
+    public class DeviceRepository : BaseRepository<Device, GatawayDB>, IDeviceRepository
     {
         private readonly IServiceProvider _service;
 
-        public GatewayDeviceRepository(IServiceProvider service) : base(service)
+        public DeviceRepository(IServiceProvider service) : base(service)
         {
             _service = service;
         }
 
         /// <inheritdoc/>
-        public async Task<List<GatewayDevice>> GetAllAsync()
+        public async Task<List<Device>> GetAllAsync()
         {
             return await Select
-                .Include(d => d.Points)
-                .ToListAsync();
+                .Include(d => d.Channel)
+                .Include(d => d.DeviceGroup).ToListAsync();
+
         }
 
         /// <inheritdoc/>
-        public async Task<GatewayDevice> GetByIdAsync(int id)
+        public async Task<Device> GetByIdAsync(int id)
         {
             return await Select
-                .Include(d => d.Points)
+                .Include(d => d.Channel)
+                .Include(d => d.DeviceGroup)
                 .Where(d => d.Id == id)
                 .FirstAsync();
         }
@@ -44,10 +46,11 @@ namespace Wombat.CommGateway.Infrastructure.Repositories
 
 
         /// <inheritdoc/>
-        public async Task<GatewayDevice> GetByNameAsync(string name)
+        public async Task<Device> GetByNameAsync(string name)
         {
             return await Select
-                .Include(d => d.Points)
+                .Include(d => d.Channel)
+                .Include(d => d.DeviceGroup)
                 .Where(d => d.Name == name)
                 .FirstAsync();
         }

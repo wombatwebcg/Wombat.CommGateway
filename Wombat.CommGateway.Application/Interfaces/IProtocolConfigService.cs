@@ -25,17 +25,17 @@ namespace Wombat.CommGateway.Application.Interfaces
         /// <summary>
         /// 创建协议配置
         /// </summary>
-        /// <param name="request">创建请求</param>
+        /// <param name="dto">创建请求</param>
         /// <returns>创建的协议配置</returns>
-        Task<ProtocolConfigDto> CreateAsync(CreateProtocolConfigRequest request);
+        Task<ProtocolConfigDto> CreateAsync(CreateProtocolConfigDto dto);
 
         /// <summary>
         /// 更新协议配置
         /// </summary>
         /// <param name="id">协议配置ID</param>
-        /// <param name="request">更新请求</param>
+        /// <param name="dto">更新请求</param>
         /// <returns>更新后的协议配置</returns>
-        Task<ProtocolConfigDto> UpdateAsync(int id, UpdateProtocolConfigRequest request);
+        Task<ProtocolConfigDto> UpdateAsync(int id, UpdateProtocolConfigDto dto);
 
         /// <summary>
         /// 删除协议配置
@@ -48,8 +48,8 @@ namespace Wombat.CommGateway.Application.Interfaces
         /// 启用/禁用协议配置
         /// </summary>
         /// <param name="id">协议配置ID</param>
-        /// <param name="isEnabled">是否启用</param>
+        /// <param name="enabled">是否启用</param>
         /// <returns>更新后的协议配置</returns>
-        Task<ProtocolConfigDto> UpdateStatusAsync(int id, bool isEnabled);
+        Task<ProtocolConfigDto> UpdateStatusAsync(int id, bool enabled);
     }
 } 

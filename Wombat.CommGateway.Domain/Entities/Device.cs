@@ -1,6 +1,6 @@
+using FreeSql.DataAnnotations;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations.Schema;
 using Wombat.CommGateway.Domain.Common;
 using Wombat.CommGateway.Domain.Enums;
 
@@ -11,9 +11,9 @@ namespace Wombat.CommGateway.Domain.Entities
     /// </summary>
     /// 
 
-    [Table("GatewayDevices")]
+    [Table(Name ="Devices")]
 
-    public class GatewayDevice : AggregateRoot
+    public class Device : AggregateRoot
     {
         /// <summary>
         /// 设备名称
@@ -25,40 +25,49 @@ namespace Wombat.CommGateway.Domain.Entities
         /// </summary>
         public string Description { get; set; }
 
-        /// <summary>
-        /// 设备类型
-        /// </summary>
-        public DeviceType Type { get; set; }
 
-        /// <summary>
-        /// 设备地址
-        /// </summary>
-        public string Address { get; set; }
 
-        /// <summary>
-        /// 通信通道ID
-        /// </summary>
-        public int ChannelId { get; set; }
 
-        /// <summary>
-        /// 协议配置ID
-        /// </summary>
-        public int ProtocolConfigId { get; set; }
+
+
 
         /// <summary>
         /// 设备状态
         /// </summary>
-        public bool IsEnabled { get; set; }
+        public bool Enable { get; set; }
 
         /// <summary>
         /// 设备属性
         /// </summary>
+        /// 
+        [JsonMap]
         public Dictionary<string, string> Properties { get; set; }
+
+        /// <summary>
+        /// 所属设备组
+        /// </summary>
+        [Navigate(nameof(DeviceGroupId))]
+        public DeviceGroup DeviceGroup { get; set; }
+
+
+        [Navigate(nameof(DeviceGroup.Id))]
+        public int DeviceGroupId { get; set; }
+
+
+        [Navigate(nameof(ChannelId))]
+        public Channel Channel { get; set; }
+
+
+        [Navigate(nameof(Channel.Id))]
+        public int ChannelId { get; set; }
+
 
         /// <summary>
         /// 设备点位列表
         /// </summary>
-        public List<DevicePoint> Points { get; set; }
+        /// 
+        [Navigate(nameof(DevicePoint.DeviceId))]
+        public List<DevicePoint>? Points { get; set; }
 
         /// <summary>
         /// 创建时间
@@ -70,7 +79,9 @@ namespace Wombat.CommGateway.Domain.Entities
         /// </summary>
         public DateTime UpdateTime { get; set; }
 
-        private GatewayDevice() { }
+
+
+        private Device() { }
 
         /// <summary>
         /// 构造函数
@@ -78,17 +89,16 @@ namespace Wombat.CommGateway.Domain.Entities
         /// <param name="name">设备名称</param>
         /// <param name="deviceType">设备类型</param>
         /// <param name="address">设备地址</param>
-        public GatewayDevice(string name, DeviceType deviceType, string address)
+        public Device(string name, int deviceGroupId, int channelId)
         {
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("设备名称不能为空", nameof(name));
-            if (string.IsNullOrWhiteSpace(address))
-                throw new ArgumentException("设备地址不能为空", nameof(address));
+
 
             Name = name;
-            Type = deviceType;
-            Address = address;
-            IsEnabled = false;
+            DeviceGroupId = deviceGroupId;
+            ChannelId = channelId;
+            Enable = true;
             Properties = new Dictionary<string, string>();
             Points = new List<DevicePoint>();
             CreateTime = DateTime.Now;
@@ -108,28 +118,9 @@ namespace Wombat.CommGateway.Domain.Entities
             UpdateTime = DateTime.Now;
         }
 
-        /// <summary>
-        /// 更新设备类型
-        /// </summary>
-        /// <param name="type">设备类型</param>
-        public void UpdateDeviceType(DeviceType type)
-        {
-            Type = type;
-            UpdateTime = DateTime.Now;
-        }
 
-        /// <summary>
-        /// 更新设备地址
-        /// </summary>
-        /// <param name="address">设备地址</param>
-        public void UpdateAddress(string address)
-        {
-            if (string.IsNullOrWhiteSpace(address))
-                throw new ArgumentException("设备地址不能为空", nameof(address));
 
-            Address = address;
-            UpdateTime = DateTime.Now;
-        }
+
 
         /// <summary>
         /// 更新通信通道ID
@@ -144,26 +135,15 @@ namespace Wombat.CommGateway.Domain.Entities
             UpdateTime = DateTime.Now;
         }
 
-        /// <summary>
-        /// 更新协议配置ID
-        /// </summary>
-        /// <param name="protocolConfigId">协议配置ID</param>
-        public void UpdateProtocolConfigId(int protocolConfigId)
-        {
-            if (protocolConfigId <= 0)
-                throw new ArgumentException("协议配置ID必须大于0", nameof(protocolConfigId));
 
-            ProtocolConfigId = protocolConfigId;
-            UpdateTime = DateTime.Now;
-        }
 
         /// <summary>
         /// 更新设备状态
         /// </summary>
         /// <param name="status">设备状态</param>
-        public void UpdateStatus(DeviceStatus status)
+        public void UpdateEnable(bool enable)
         {
-            IsEnabled = status == DeviceStatus.Running;
+            Enable = enable;
             UpdateTime = DateTime.Now;
         }
 
@@ -201,29 +181,5 @@ namespace Wombat.CommGateway.Domain.Entities
         }
     }
 
-    /// <summary>
-    /// 设备类型枚举
-    /// </summary>
-    public enum DeviceType
-    {
-        /// <summary>
-        /// 串口设备
-        /// </summary>
-        Serial,
 
-        /// <summary>
-        /// 以太网设备
-        /// </summary>
-        Ethernet,
-
-        /// <summary>
-        /// CAN设备
-        /// </summary>
-        CAN,
-
-        /// <summary>
-        /// PROFINET设备
-        /// </summary>
-        PROFINET
-    }
 } 

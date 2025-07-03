@@ -1,6 +1,6 @@
+using FreeSql.DataAnnotations;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations.Schema;
 using Wombat.CommGateway.Domain.Common;
 
 namespace Wombat.CommGateway.Domain.Entities
@@ -10,7 +10,7 @@ namespace Wombat.CommGateway.Domain.Entities
     /// </summary>
     /// 
 
-    [Table("ProtocolConfigs")]
+    [Table(Name="ProtocolConfigs")]
     public class ProtocolConfig : Entity
     {
         /// <summary>
@@ -31,12 +31,14 @@ namespace Wombat.CommGateway.Domain.Entities
         /// <summary>
         /// 协议参数
         /// </summary>
+        /// 
+        [JsonMap]
         public Dictionary<string, string> Parameters { get; set; }
 
         /// <summary>
         /// 是否启用
         /// </summary>
-        public bool IsEnabled { get; set; }
+        public bool Enable { get; set; }
 
         /// <summary>
         /// 创建时间
@@ -55,7 +57,7 @@ namespace Wombat.CommGateway.Domain.Entities
             Name = name;
             Type = type;
             Version = version;
-            IsEnabled = true;
+            Enable = true;
             Parameters = new Dictionary<string, string>();
             CreateTime = DateTime.Now;
             UpdateTime = DateTime.Now;
@@ -63,7 +65,7 @@ namespace Wombat.CommGateway.Domain.Entities
 
         public void UpdateStatus(bool isEnabled)
         {
-            IsEnabled = isEnabled;
+            Enable = isEnabled;
             UpdateTime = DateTime.Now;
         }
 

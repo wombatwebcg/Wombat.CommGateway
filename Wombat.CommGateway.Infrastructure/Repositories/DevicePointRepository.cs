@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Wombat.Extensions.AutoGenerator.Attributes;
 using Wombat.Extensions.FreeSql;
@@ -28,9 +29,42 @@ namespace Wombat.CommGateway.Infrastructure.Repositories
         }
 
         /// <inheritdoc/>
+        public async Task<IEnumerable<DevicePoint>> GetAllAsync()
+        {
+            return await Select.ToListAsync();
+        }
+
+        /// <inheritdoc/>
+        public async Task<DevicePoint> GetByIdAsync(int id)
+        {
+            return await Select.Where(x => x.Id == id).FirstAsync();
+        }
+
+        /// <inheritdoc/>
+        public async Task<bool> InsertAsync(DevicePoint devicePoint)
+        {
+            await InsertAsync(devicePoint);
+            return devicePoint.Id > 0;
+        }
+
+        /// <inheritdoc/>
+        public async Task<bool> UpdateAsync(DevicePoint devicePoint)
+        {
+            await UpdateAsync(devicePoint);
+            return true;
+        }
+
+        /// <inheritdoc/>
+        public async Task<bool> DeleteAsync(DevicePoint devicePoint)
+        {
+            await DeleteAsync(devicePoint);
+            return true;
+        }
+
+        /// <inheritdoc/>
         public async Task<IEnumerable<DevicePoint>> GetDevicePointsAsync(int deviceId)
         {
-            var device = await _service.GetService<IGatewayDeviceRepository>()
+            var device = await _service.GetService<IDeviceRepository>()
                 .GetByIdAsync(deviceId);
             return device?.Points ?? new List<DevicePoint>();
         }
@@ -40,8 +74,6 @@ namespace Wombat.CommGateway.Infrastructure.Repositories
         {
             return await Select.Where(x => x.Id == id).FirstAsync();
         }
-
-
 
         /// <inheritdoc/>
         public async Task<bool> DeleteDevicePointAsync(int id)

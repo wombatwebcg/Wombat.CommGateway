@@ -41,11 +41,13 @@ namespace Wombat.CommGateway.Application.Services
             {
                 Id = channel.Id,
                 Name = channel.Name,
-                ChannelType = channel.Type.ToString(),
-                Configuration = System.Text.Json.JsonSerializer.Serialize(channel.Configuration),
-                IsEnabled = channel.Status == ChannelStatus.Running,
+                Type = (int)channel.Type,
+                Protocol = (int)channel.Protocol,
+                Role = (int)channel.Role,
+                Status = (int)channel.Status,
+                Enable = channel.Enable,
                 CreateTime = channel.CreateTime,
-                UpdateTime = channel.UpdateTime
+                Configuration = channel.Configuration
             });
         }
 
@@ -59,21 +61,19 @@ namespace Wombat.CommGateway.Application.Services
             {
                 Id = channel.Id,
                 Name = channel.Name,
-                ChannelType = channel.Type.ToString(),
-                Configuration = System.Text.Json.JsonSerializer.Serialize(channel.Configuration),
-                IsEnabled = channel.Status == ChannelStatus.Running,
+                Type = (int)channel.Type,
+                Protocol = (int)channel.Protocol,
+                Role = (int)channel.Role,
+                Status = (int)channel.Status,
+                Enable = channel.Enable,
                 CreateTime = channel.CreateTime,
-                UpdateTime = channel.UpdateTime
+                Configuration = channel.Configuration
             };
         }
 
         public async Task<ChannelDto> CreateAsync(CreateChannelDto dto)
         {
-            var protocolConfig = await _protocolConfigRepository.GetByIdAsync(dto.ProtocolConfigId);
-            if (protocolConfig == null)
-                throw new ArgumentException($"Protocol config with id {dto.ProtocolConfigId} not found.");
-
-            var channel = new Channel(dto.Name, dto.Type, dto.ProtocolConfigId);
+            var channel = new Channel(dto.Name, (ChannelType)dto.Type, (ProtocolType)dto.Protocol, (ChannelRole)dto.Role, 0, dto.Enable);
             if (dto.Configuration != null)
             {
                 channel.UpdateConfiguration(dto.Configuration);
@@ -85,11 +85,36 @@ namespace Wombat.CommGateway.Application.Services
             {
                 Id = channel.Id,
                 Name = channel.Name,
-                ChannelType = channel.Type.ToString(),
-                Configuration = System.Text.Json.JsonSerializer.Serialize(channel.Configuration),
-                IsEnabled = channel.Status == ChannelStatus.Running,
+                Type = (int)channel.Type,
+                Protocol = (int)channel.Protocol,
+                Role = (int)channel.Role,
+                Status = (int)channel.Status,
+                Enable = channel.Enable,
                 CreateTime = channel.CreateTime,
-                UpdateTime = channel.UpdateTime
+                Configuration = channel.Configuration
+            };
+        }
+
+        public async Task<ChannelDto> UpdateConfigurationAsync(int id, Dictionary<string, string> configuration)
+        {
+            var channel = await _channelRepository.GetByIdAsync(id);
+            if (channel == null)
+                throw new ArgumentException($"Communication channel with id {id} not found.");
+
+            channel.UpdateConfiguration(configuration);
+            await _channelRepository.UpdateAsync(channel);
+
+            return new ChannelDto
+            {
+                Id = channel.Id,
+                Name = channel.Name,
+                Type = (int)channel.Type,
+                Protocol = (int)channel.Protocol,
+                Role = (int)channel.Role,
+                Status = (int)channel.Status,
+                Enable = channel.Enable,
+                CreateTime = channel.CreateTime,
+                Configuration = channel.Configuration
             };
         }
 
@@ -110,11 +135,13 @@ namespace Wombat.CommGateway.Application.Services
             {
                 Id = channel.Id,
                 Name = channel.Name,
-                ChannelType = channel.Type.ToString(),
-                Configuration = System.Text.Json.JsonSerializer.Serialize(channel.Configuration),
-                IsEnabled = channel.Status == ChannelStatus.Running,
+                Type = (int)channel.Type,
+                Protocol = (int)channel.Protocol,
+                Role = (int)channel.Role,
+                Status = (int)channel.Status,
+                Enable = channel.Enable,
                 CreateTime = channel.CreateTime,
-                UpdateTime = channel.UpdateTime
+                Configuration = channel.Configuration
             };
         }
 
@@ -155,11 +182,13 @@ namespace Wombat.CommGateway.Application.Services
             {
                 Id = channel.Id,
                 Name = channel.Name,
-                ChannelType = channel.Type.ToString(),
-                Configuration = System.Text.Json.JsonSerializer.Serialize(channel.Configuration),
-                IsEnabled = channel.Status == ChannelStatus.Running,
+                Type = (int)channel.Type,
+                Protocol = (int)channel.Protocol,
+                Role = (int)channel.Role,
+                Status = (int)channel.Status,
+                Enable = channel.Enable,
                 CreateTime = channel.CreateTime,
-                UpdateTime = channel.UpdateTime
+                Configuration = channel.Configuration
             };
         }
 
@@ -181,32 +210,36 @@ namespace Wombat.CommGateway.Application.Services
             {
                 Id = channel.Id,
                 Name = channel.Name,
-                ChannelType = channel.Type.ToString(),
-                Configuration = System.Text.Json.JsonSerializer.Serialize(channel.Configuration),
-                IsEnabled = channel.Status == ChannelStatus.Running,
+                Type = (int)channel.Type,
+                Protocol = (int)channel.Protocol,
+                Role = (int)channel.Role,
+                Status = (int)channel.Status,
+                Enable = channel.Enable,
                 CreateTime = channel.CreateTime,
-                UpdateTime = channel.UpdateTime
+                Configuration = channel.Configuration
             };
         }
 
-        public async Task<ChannelDto> UpdateStatusAsync(int id, ChannelStatus status)
+        public async Task<ChannelDto> UpdateStatusAsync(int id, int status)
         {
             var channel = await _channelRepository.GetByIdAsync(id);
             if (channel == null)
                 throw new ArgumentException($"Communication channel with id {id} not found.");
 
-            channel.UpdateStatus(status);
+            channel.UpdateStatus((ChannelStatus)status);
             await _channelRepository.UpdateAsync(channel);
 
-            return new ChannelDto()
+            return new ChannelDto
             {
                 Id = channel.Id,
                 Name = channel.Name,
-                ChannelType = channel.Type.ToString(),
-                Configuration = System.Text.Json.JsonSerializer.Serialize(channel.Configuration),
-                IsEnabled = channel.Status == ChannelStatus.Running,
+                Type = (int)channel.Type,
+                Protocol = (int)channel.Protocol,
+                Role = (int)channel.Role,
+                Status = (int)channel.Status,
+                Enable = channel.Enable,
                 CreateTime = channel.CreateTime,
-                UpdateTime = channel.UpdateTime
+                Configuration = channel.Configuration
             };
         }
 
@@ -236,6 +269,32 @@ namespace Wombat.CommGateway.Application.Services
         {
             // TODO: 实现批量数据写入逻辑
             await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// 更新通道启用状态
+        /// </summary>
+        public async Task<ChannelDto> UpdateEnableAsync(int id, bool enable)
+        {
+            var channel = await _channelRepository.GetByIdAsync(id);
+            if (channel == null)
+                throw new ArgumentException($"Communication channel with id {id} not found.");
+
+            channel.Enable = enable;
+            await _channelRepository.UpdateAsync(channel);
+
+            return new ChannelDto
+            {
+                Id = channel.Id,
+                Name = channel.Name,
+                Type = (int)channel.Type,
+                Protocol = (int)channel.Protocol,
+                Role = (int)channel.Role,
+                Status = (int)channel.Status,
+                Enable = channel.Enable,
+                CreateTime = channel.CreateTime,
+                Configuration = channel.Configuration
+            };
         }
     }
 } 

@@ -17,8 +17,9 @@ namespace Wombat.CommGateway.Application.Mappings
         public AutoMapperProfile()
         {
             // 设备映射
-            CreateMap<GatewayDevice, GatewayDeviceDto>().ReverseMap();
-            CreateMap<GatewayDevice, CreateGatewayDeviceDto>().ReverseMap();
+            CreateMap<Device, DeviceDto>().ReverseMap();
+            CreateMap<Device, CreateDeviceDto>().ReverseMap();
+            CreateMap<Device, UpdateDeviceDto>().ReverseMap();
 
             // 设备点位映射
             CreateMap<DevicePoint, DevicePointDto>().ReverseMap();

@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Wombat.Extensions.AutoGenerator" Version="1.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Wombat.CommGateway.Infrastructure\Wombat.CommGateway.Infrastructure.csproj" />
   </ItemGroup>
 

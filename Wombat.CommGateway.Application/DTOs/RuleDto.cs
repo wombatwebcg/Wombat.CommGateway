@@ -31,7 +31,7 @@ namespace Wombat.CommGateway.Application.DTOs
         /// <summary>
         /// 是否启用
         /// </summary>
-        public bool IsEnabled { get; set; }
+        public bool IsEnable { get; set; }
 
         /// <summary>
         /// 设备ID
@@ -237,7 +237,7 @@ namespace Wombat.CommGateway.Application.DTOs
         /// <summary>
         /// 是否启用
         /// </summary>
-        public bool IsEnabled { get; set; }
+        public bool IsEnable { get; set; }
 
         /// <summary>
         /// 设备ID

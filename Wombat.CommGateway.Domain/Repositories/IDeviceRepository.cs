@@ -8,17 +8,17 @@ namespace Wombat.CommGateway.Domain.Repositories
     /// <summary>
     /// 网关设备仓储接口
     /// </summary>
-    public interface IGatewayDeviceRepository: IRepositoryKey<GatewayDevice>
+    public interface IDeviceRepository: IRepositoryKey<Device>
     {
         /// <summary>
         /// 获取所有设备
         /// </summary>
-        Task<List<GatewayDevice>> GetAllAsync();
+        Task<List<Device>> GetAllAsync();
 
         /// <summary>
         /// 根据ID获取设备
         /// </summary>
-        Task<GatewayDevice> GetByIdAsync(int id);
+        Task<Device> GetByIdAsync(int id);
 
 
 
@@ -30,6 +30,6 @@ namespace Wombat.CommGateway.Domain.Repositories
         /// <summary>
         /// 根据名称获取设备
         /// </summary>
-        Task<GatewayDevice> GetByNameAsync(string name);
+        Task<Device> GetByNameAsync(string name);
     }
 } 

@@ -132,7 +132,7 @@
         </el-form-item>
         
         <el-form-item label="通道名称" prop="channelName">
-          <el-select v-model="form.channelName" placeholder="请选择通道名称">
+          <el-select v-model="form.channelName" placeholder="请选择通道名称" @change="handleChannelChange">
             <el-option
               v-for="channel in channels"
               :key="channel.name"
@@ -152,8 +152,8 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item label="设备组" prop="groupId">
-          <el-select v-model="form.groupId" placeholder="请选择设备组" @change="handleGroupChange">
+        <el-form-item label="设备组" prop="deviceGroupId">
+          <el-select v-model="form.deviceGroupId" placeholder="请选择设备组" @change="handleGroupChange">
             <el-option
               v-for="group in getGroupOptions()"
               :key="group.id"
@@ -291,18 +291,21 @@ const formRef = ref<FormInstance>()
 const channels = ref<Channel[]>([])
 
 // 表单数据
-const form = reactive<CreateDeviceDto & { id?: number; groupId?: number }>({
+const form = reactive({
+  id: undefined as number | undefined,
   name: '',
   description: '',
-  channelName: '',
-  deviceGroupName: ''
+  deviceGroupId: undefined as number | undefined,
+  deviceGroupName: '',
+  channelId: undefined as number | undefined,
+  channelName: ''
 })
 
 // 表单验证规则
 const rules: FormRules = {
   name: [{ required: true, message: '请输入设备名称', trigger: 'blur' }],
   channelName: [{ required: true, message: '请选择通道名称', trigger: 'change' }],
-  groupId: [{ required: true, message: '请选择设备组', trigger: 'change' }],
+  deviceGroupId: [{ required: true, message: '请选择设备组', trigger: 'change' }],
   description: [{ required: true, message: '请输入设备描述', trigger: 'blur' }]
 }
 
@@ -400,19 +403,15 @@ const handleNodeClick = (data: DeviceGroupDto) => {
 const getDevices = async () => {
   loading.value = true
   try {
-    const res = await getAllDevices()
-    let filteredDevices = Array.isArray(res) ? [...res] : []
-    
-    // 如果选择了特定设备组（非"全部"），则进行筛选
+    let res
+    // 如果选择了特定设备组（非"全部"），则传递deviceGroupId参数
     if (selectedGroupId.value && selectedGroupId.value !== 0) {
-      const selectedGroup = deviceGroups.value[0].children?.find(group => group.id === selectedGroupId.value)
-      if (selectedGroup) {
-        filteredDevices = filteredDevices.filter(device => device.deviceGroupId === selectedGroupId.value)
-      }
+      res = await getAllDevices(selectedGroupId.value)
+    } else {
+      res = await getAllDevices()
     }
-    
-    devices.value = filteredDevices
-    total.value = filteredDevices.length
+    devices.value = Array.isArray(res) ? [...res] : []
+    total.value = devices.value.length
   } catch (error) {
     console.error('获取设备列表失败:', error)
     ElMessage.error('获取设备列表失败')
@@ -454,10 +453,13 @@ const handleAdd = () => {
     formRef.value.resetFields()
   }
   Object.assign(form, {
+    id: undefined,
     name: '',
     description: '',
-    channelName: '',
-    groupId: undefined
+    deviceGroupId: undefined,
+    deviceGroupName: '',
+    channelId: undefined,
+    channelName: ''
   })
 }
 
@@ -465,21 +467,23 @@ const handleAdd = () => {
 const handleEdit = (row: DeviceDto) => {
   dialogType.value = 'edit'
   dialogVisible.value = true
-  // 重置表单
   if (formRef.value) {
     formRef.value.resetFields()
   }
-  
   // 找到对应的设备组
   const selectedGroup = deviceGroups.value[0].children?.find(
     group => group.name === row.deviceGroupName
   )
-  
-  // 使用解构赋值创建新对象，确保正确设置 groupId 和 deviceGroupName
-  Object.assign(form, { 
+  // 找到对应的通道
+  const selectedChannel = channels.value.find(
+    channel => channel.name === row.channelName
+  )
+  Object.assign(form, {
     ...row,
-    groupId: selectedGroup?.id,
-    deviceGroupName: row.deviceGroupName // 确保 deviceGroupName 被正确设置
+    deviceGroupId: selectedGroup?.id,
+    deviceGroupName: row.deviceGroupName,
+    channelId: selectedChannel?.id,
+    channelName: row.channelName
   })
 }
 
@@ -515,20 +519,16 @@ const handleDelete = (row: DeviceDto) => {
 // 提交表单
 const handleSubmit = async () => {
   if (!formRef.value) return
-  
   try {
-    // 表单验证
     await formRef.value.validate()
-    
-    // 准备提交数据
     const submitData = {
       name: form.name.trim(),
       description: form.description.trim(),
-      channelName: form.channelName,
-      deviceGroupName: form.deviceGroupName
+      deviceGroupId: form.deviceGroupId,
+      deviceGroupName: form.deviceGroupName,
+      channelId: form.channelId,
+      channelName: form.channelName
     }
-
-    // 根据操作类型提交数据
     if (dialogType.value === 'add') {
       await createDevice(submitData)
       ElMessage.success('新增成功')
@@ -536,12 +536,9 @@ const handleSubmit = async () => {
       await updateDevice(form.id!, submitData)
       ElMessage.success('更新成功')
     }
-
-    // 关闭对话框并刷新列表
     dialogVisible.value = false
     await getDevices()
   } catch (error: any) {
-    // 处理验证错误
     if (error?.message) {
       ElMessage.error(error.message)
     } else {
@@ -562,11 +559,21 @@ const handleCurrentChange = (val: number) => {
   getDevices()
 }
 
-// 修改 handleGroupChange 方法
+// 设备组选择器
 const handleGroupChange = (groupId: number) => {
   const selectedGroup = deviceGroups.value[0].children?.find(group => group.id === groupId)
   if (selectedGroup) {
+    form.deviceGroupId = selectedGroup.id
     form.deviceGroupName = selectedGroup.name
+  }
+}
+
+// 通道选择器
+const handleChannelChange = (channelName: string) => {
+  const selectedChannel = channels.value.find(channel => channel.name === channelName)
+  if (selectedChannel) {
+    form.channelId = selectedChannel.id
+    form.channelName = selectedChannel.name
   }
 }
 

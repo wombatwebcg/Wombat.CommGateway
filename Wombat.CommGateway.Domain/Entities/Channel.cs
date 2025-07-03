@@ -1,7 +1,9 @@
+using FreeSql.DataAnnotations;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations.Schema;
 using Wombat.CommGateway.Domain.Common;
+using TableAttribute = FreeSql.DataAnnotations.TableAttribute;
 
 namespace Wombat.CommGateway.Domain.Entities
 {
@@ -10,7 +12,7 @@ namespace Wombat.CommGateway.Domain.Entities
     /// </summary>
     /// 
 
-    [Table("Channels")]
+    [Table(Name ="Channels")]
     public class Channel : Entity
     {
         /// <summary>
@@ -41,11 +43,15 @@ namespace Wombat.CommGateway.Domain.Entities
         /// <summary>
         /// 通道配置
         /// </summary>
+        /// 
+        [JsonMap]
         public Dictionary<string, string> Configuration { get; set; }
 
         /// <summary>
         /// 关联的协议配置ID
         /// </summary>
+        /// 
+        [Navigate(nameof(ProtocolConfig.Id))]
         public int ProtocolConfigId { get; set; }
 
         /// <summary>
@@ -66,6 +72,12 @@ namespace Wombat.CommGateway.Domain.Entities
         /// </summary>
         public DateTime UpdateTime { get; set; }
 
+        /// <summary>
+        /// 通道下的设备集合
+        /// </summary>
+        [Navigate(nameof(Device.Id))]
+        public List<Device> Devices { get; set; }
+
         private Channel() { }
 
         public Channel(string name, ChannelType type, ProtocolType protocol, ChannelRole role, int protocolConfigId, bool enable = true)
@@ -80,6 +92,7 @@ namespace Wombat.CommGateway.Domain.Entities
             Configuration = new Dictionary<string, string>();
             CreateTime = DateTime.Now;
             UpdateTime = DateTime.Now;
+            Devices = new List<Device>();
         }
 
         public void UpdateStatus(ChannelStatus status)

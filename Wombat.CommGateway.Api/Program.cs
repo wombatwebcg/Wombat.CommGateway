@@ -19,6 +19,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Wombat.CommGateway.Application.Services;
 using Wombat.CommGateway.Infrastructure.Communication;
+using NPOI.XWPF.UserModel;
 
 namespace Wombat.CommGateway.API
 {
@@ -107,26 +108,21 @@ namespace Wombat.CommGateway.API
 
             #endregion
 
-            Wombat.CommGateway.Application.AutoInjectExtension.AddAutoInject(builder.Services);
-            Wombat.CommGateway.Infrastructure.AutoInjectExtension.AddAutoInject(builder.Services);
-            builder.Services.AddAutoInject();
-
-
+            Application.AutoInjectExtension.AddAutoInject(builder.Services);
+            Infrastructure.AutoInjectExtension.AddAutoInject(builder.Services);
+            Api.AutoInjectExtension.AddAutoInject(builder.Services);
 
             // 注册AutoMapper
             builder.Services.AddAutoMapper(typeof(AutoMapperProfile));
 
-            // 注册仓储
 
 
+            // 手动注册RequestBody服务
+            //builder.Services.AddScoped<RequestBody>();
 
-            // 注册基础设施服务
+            //builder.Services.AddScoped<Wombat.CommGateway.API.RequestBody>();
 
-            builder.Services.AddTransient<ModbusTcpProtocol>();
-            builder.Services.AddTransient<ModbusRtuProtocol>();
-            builder.Services.AddTransient<SiemensS7Protocol>();
-            builder.Services.AddTransient<MitsubishiMcProtocol>();
-            builder.Services.AddTransient<OmronFinsProtocol>();
+
 
             var app = builder.Build();
 

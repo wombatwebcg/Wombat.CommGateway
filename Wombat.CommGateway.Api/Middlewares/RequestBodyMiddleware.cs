@@ -33,7 +33,7 @@ namespace Wombat.CommGateway.API
                     memoryStream.Position = 0;
 
                     string body = Encoding.UTF8.GetString(memoryStream.ToArray());
-                    context.RequestServices.GetService<RequestBody>().Body = body;
+                    context.RequestServices.GetRequiredService<RequestBody>().Body = body;
 
                     // 双重保障：恢复原始流的位置
                     context.Request.Body.Position = originalPosition;

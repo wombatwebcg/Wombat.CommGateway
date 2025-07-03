@@ -75,7 +75,7 @@ Response:{Response}
                     (int)watch.ElapsedMilliseconds,
                     context.Request.Method,
                     context.Request.ContentType,
-                    context.RequestServices.GetService<RequestBody>().Body,
+                    context.RequestServices.GetRequiredService<RequestBody>()?.Body,
                     context.Response.StatusCode,
                     resContent
                     );

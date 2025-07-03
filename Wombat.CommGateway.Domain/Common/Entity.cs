@@ -1,5 +1,6 @@
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
+
+
+using FreeSql.DataAnnotations;
 
 namespace Wombat.CommGateway.Domain.Common
 {
@@ -12,7 +13,7 @@ namespace Wombat.CommGateway.Domain.Common
         /// 主键ID
         /// </summary>
         /// 
-		[Key, Column(Order = 1)]
+        [Column(IsPrimary = true, IsIdentity = true)]
         public int Id { get; set; }
     }
 } 

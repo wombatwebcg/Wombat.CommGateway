@@ -10,8 +10,8 @@ using Wombat.Extensions.DataTypeExtensions;
 using Wombat.CommGateway.Application.DTOs;
 using Wombat.CommGateway.Application.Interfaces;
 using Wombat.CommGateway.Domain.Entities;
+using Wombat.CommGateway.Domain.Enums;
 using Wombat.CommGateway.Domain.Repositories;
-using Wombat.CommGateway.Infrastructure.Repositories;
 using Wombat.Infrastructure;
 
 namespace Wombat.CommGateway.Application.Services
@@ -24,212 +24,199 @@ namespace Wombat.CommGateway.Application.Services
 
     public class DevicePointService : IDevicePointService
     {
-        private readonly IDevicePointRepository _devicePointRepository;
+        private readonly IDevicePointRepository _pointRepository;
         private readonly IMapper _mapper;
         private readonly ILogger<DevicePointService> _logger;
 
         /// <summary>
         /// 构造函数
         /// </summary>
-        /// <param name="devicePointRepository">设备点位仓储</param>
+        /// <param name="pointRepository">设备点位仓储</param>
         /// <param name="mapper">AutoMapper实例</param>
         /// <param name="logger">日志记录器</param>
         public DevicePointService(
-            IDevicePointRepository devicePointRepository,
+            IDevicePointRepository pointRepository,
             IMapper mapper,
             ILogger<DevicePointService> logger)
         {
-            _devicePointRepository = devicePointRepository ?? throw new ArgumentNullException(nameof(devicePointRepository));
+            _pointRepository = pointRepository ?? throw new ArgumentNullException(nameof(pointRepository));
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         /// <inheritdoc/>
-        public async Task<DevicePointDto> CreatePointAsync(CreateDevicePointDto dto)
+        public async Task<PointListResponseDto> GetPointsAsync(PointQueryDto query)
         {
-            try
-            {
-                _logger.LogInformation("开始创建设备点位: {Name}, {Address}, {DataType}, {ScanRate}", dto.Name, dto.Address, dto.DataType, dto.ScanRate);
+            var points = await _pointRepository.GetAllAsync();
+            var filtered = points.AsQueryable();
+            
+            if (query.DeviceId.HasValue)
+                filtered = filtered.Where(p => p.DeviceId == query.DeviceId.Value);
+            if (query.DataType.HasValue)
+                filtered = filtered.Where(p => (int)p.DataType == query.DataType.Value);
+            if (query.Status.HasValue)
+                filtered = filtered.Where(p => (int)p.Status == query.Status.Value);
 
-                if (string.IsNullOrWhiteSpace(dto.Name))
-                    throw new ArgumentException("点位名称不能为空", nameof(dto.Name));
-                if (string.IsNullOrWhiteSpace(dto.Address))
-                    throw new ArgumentException("点位地址不能为空", nameof(dto.Address));
-                if (string.IsNullOrWhiteSpace(dto.DataType))
-                    throw new ArgumentException("数据类型不能为空", nameof(dto.DataType));
-                if (dto.ScanRate <= 0)
-                    throw new ArgumentException("扫描周期必须大于0", nameof(dto.ScanRate));
-
-                var point = new DevicePoint(dto.Name, dto.Address, Enum.Parse<DataTypeEnums>(dto.DataType), dto.ScanRate);
-                await _devicePointRepository.InsertAsync(point);
-
-                _logger.LogInformation("设备点位创建成功: {PointId}", point.Id);
-                return _mapper.Map<DevicePointDto>(point);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "创建设备点位失败: {Name}, {Address}, {DataType}, {ScanRate}", dto.Name, dto.Address, dto.DataType, dto.ScanRate);
-                throw;
-            }
+                
+            var total = filtered.Count();
+            filtered = filtered.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize);
+            var dtoList = filtered.Select(MapToDto).ToList();
+            return new PointListResponseDto { Items = dtoList, Total = total };
         }
+
+        /// <inheritdoc/>
+        public async Task<List<DevicePointDto>> GetAllPointsAsync()
+        {
+            var points = await _pointRepository.GetAllAsync();
+            return points.Select(MapToDto).ToList();
+        }
+
+        /// <inheritdoc/>
+        public async Task<DevicePointDto> GetPointByIdAsync(int id)
+        {
+            var point = await _pointRepository.GetByIdAsync(id);
+            return point == null ? null : MapToDto(point);
+        }
+
+        /// <inheritdoc/>
+        public async Task<int> CreatePointAsync(CreateDevicePointDto dto)
+        {
+            var point = new DevicePoint(
+                dto.Name,
+                dto.DeviceId,
+                dto.Address,
+                dto.DataType,
+                dto.ReadWrite,
+                dto.ScanRate,
+                dto.Enable,
+                dto.Remark
+            );
+            
+            // 设置Properties字段
+            if (dto.Properties != null)
+            {
+                point.Properties = dto.Properties;
+            }
+            
+            await _pointRepository.InsertAsync(point);
+            return point.Id;
+        }
+
+        /// <inheritdoc/>
+        public async Task UpdatePointAsync(int id, DevicePointDto dto)
+        {
+            var point = await _pointRepository.GetByIdAsync(id);
+            if (point == null) 
+                throw new ArgumentException($"Point with id {id} not found.");
+                
+            point.Name = dto.Name;
+            point.DeviceId = dto.DeviceId;
+            point.Address = dto.Address;
+            point.DataType = dto.DataType;
+            point.ReadWrite = dto.ReadWrite;
+            point.ScanRate = dto.ScanRate;
+            point.Enable = dto.Enable;
+            point.Status = dto.Status;
+            point.Remark = dto.Remark;
+            point.UpdateTime = DateTime.Now;
+            
+            await _pointRepository.UpdateAsync(point);
+        }
+
+        /// <inheritdoc/>
+        public async Task DeletePointAsync(int id)
+        {
+            var point = await _pointRepository.GetByIdAsync(id);
+            if (point == null) 
+                throw new ArgumentException($"Point with id {id} not found.");
+                
+            await _pointRepository.DeleteAsync(point);
+        }
+
+        /// <inheritdoc/>
+        public async Task UpdatePointEnableAsync(int id, bool enable)
+        {
+            var point = await _pointRepository.GetByIdAsync(id);
+            if (point == null) 
+                throw new ArgumentException($"Point with id {id} not found.");
+                
+            point.Enable = enable;
+            point.Enable = enable;
+            point.UpdateTime = DateTime.Now;
+            
+            await _pointRepository.UpdateAsync(point);
+        }
+
+        /// <inheritdoc/>
+        public async Task<List<DevicePointDto>> GetDevicePointsAsync(int deviceId)
+        {
+            var points = await _pointRepository.GetAllAsync();
+            var devicePoints = points.Where(p => p.DeviceId == deviceId).ToList();
+            return devicePoints.Select(MapToDto).ToList();
+        }
+
+
 
         /// <inheritdoc/>
         public async Task UpdatePointStatusAsync(int pointId, bool isEnabled)
         {
-            try
-            {
-                _logger.LogInformation("开始更新设备点位状态: {PointId}, {IsEnabled}", pointId, isEnabled);
-
-                var point = await _devicePointRepository.GetDevicePointAsync(pointId);
-                if (point == null)
-                    throw new KeyNotFoundException($"未找到ID为{pointId}的设备点位");
-
-                point.UpdateStatus(isEnabled);
-                await _devicePointRepository.UpdateAsync(point);
-
-                _logger.LogInformation("设备点位状态更新成功: {PointId}, {IsEnabled}", pointId, isEnabled);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "更新设备点位状态失败: {PointId}, {IsEnabled}", pointId, isEnabled);
-                throw;
-            }
+            var point = await _pointRepository.GetByIdAsync(pointId);
+            if (point == null) 
+                throw new ArgumentException($"Point with id {pointId} not found.");
+                
+            point.UpdateStatus(isEnabled);
+            await _pointRepository.UpdateAsync(point);
         }
 
         /// <inheritdoc/>
-        public async Task<IEnumerable<DevicePointDto>> GetDevicePointsAsync(int deviceId)
+        public async Task UpdatePointConfigurationAsync(int pointId, UpdateDevicePointDto updateDevicePointDto)
         {
-            try
-            {
-                _logger.LogInformation("开始获取设备点位列表: {DeviceId}", deviceId);
-
-                var points = await _devicePointRepository.GetDevicePointsAsync(deviceId);
-                var dtos = _mapper.Map<IEnumerable<DevicePointDto>>(points);
-
-                _logger.LogInformation("获取设备点位列表成功: {DeviceId}, 数量: {Count}", deviceId, dtos.Count());
-                return dtos;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "获取设备点位列表失败: {DeviceId}", deviceId);
-                throw;
-            }
-        }
-
-        /// <inheritdoc/>
-        public async Task<DevicePointDto> GetPointByIdAsync(int pointId)
-        {
-            try
-            {
-                _logger.LogInformation("开始获取设备点位详情: {PointId}", pointId);
-
-                var point = await _devicePointRepository.GetDevicePointAsync(pointId);
-                if (point == null)
-                    throw new KeyNotFoundException($"未找到ID为{pointId}的设备点位");
-
-                var dto = _mapper.Map<DevicePointDto>(point);
-
-                _logger.LogInformation("获取设备点位详情成功: {PointId}", pointId);
-                return dto;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "获取设备点位详情失败: {PointId}", pointId);
-                throw;
-            }
-        }
-
-        /// <inheritdoc/>
-        public async Task UpdatePointConfigurationAsync(int pointId, UpdateDevicePointDto dto)
-        {
-            try
-            {
-                _logger.LogInformation("开始更新设备点位配置: {PointId}, {Address}, {DataType}, {ScanRate}", pointId, dto.Address, dto.DataType, dto.ScanRate);
-
-                if (string.IsNullOrWhiteSpace(dto.Address))
-                    throw new ArgumentException("点位地址不能为空", nameof(dto.Address));
-                if (string.IsNullOrWhiteSpace(dto.DataType))
-                    throw new ArgumentException("数据类型不能为空", nameof(dto.DataType));
-                if (dto.ScanRate <= 0)
-                    throw new ArgumentException("扫描周期必须大于0", nameof(dto.ScanRate));
-
-                var point = await _devicePointRepository.GetDevicePointAsync(pointId);
-                if (point == null)
-                    throw new KeyNotFoundException($"未找到ID为{pointId}的设备点位");
-
-                point.UpdateScanRate(dto.ScanRate);
-                await _devicePointRepository.UpdateAsync(point);
-
-                _logger.LogInformation("设备点位配置更新成功: {PointId}", pointId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "更新设备点位配置失败: {PointId}, {Address}, {DataType}, {ScanRate}", pointId, dto.Address, dto.DataType, dto.ScanRate);
-                throw;
-            }
-        }
-
-        /// <inheritdoc/>
-        public async Task DeletePointAsync(int pointId)
-        {
-            try
-            {
-                _logger.LogInformation("开始删除设备点位: {PointId}", pointId);
-
-                var point = await _devicePointRepository.GetDevicePointAsync(pointId);
-                if (point == null)
-                    throw new KeyNotFoundException($"未找到ID为{pointId}的设备点位");
-
-                await _devicePointRepository.DeleteDevicePointAsync(pointId);
-
-                _logger.LogInformation("设备点位删除成功: {PointId}", pointId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "删除设备点位失败: {PointId}", pointId);
-                throw;
-            }
+            var point = await _pointRepository.GetByIdAsync(pointId);
+            if (point == null) 
+                throw new ArgumentException($"Point with id {pointId} not found.");
+                
+            if (!string.IsNullOrEmpty(updateDevicePointDto.Name))
+                point.UpdateName(updateDevicePointDto.Name);
+            if (!string.IsNullOrEmpty(updateDevicePointDto.Address))
+                point.UpdateAddress(updateDevicePointDto.Address);
+            if (updateDevicePointDto.ScanRate > 0)
+                point.UpdateScanRate(updateDevicePointDto.ScanRate);
+            if (updateDevicePointDto.Enable.HasValue)
+                point.UpdateStatus(updateDevicePointDto.Enable.Value);
+                
+            await _pointRepository.UpdateAsync(point);
         }
 
         /// <inheritdoc/>
         public async Task ImportPointsAsync(int deviceId, IEnumerable<DevicePoint> points)
         {
-            try
-            {
-                _logger.LogInformation("开始导入设备点位: {DeviceId}, 数量: {Count}", deviceId, points.Count());
-
-                if (points == null || !points.Any())
-                    throw new ArgumentException("点位列表不能为空", nameof(points));
-
-                await _devicePointRepository.AddDevicePointsAsync(points);
-
-                _logger.LogInformation("设备点位导入成功: {DeviceId}, 数量: {Count}", deviceId, points.Count());
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "导入设备点位失败: {DeviceId}", deviceId);
-                throw;
-            }
+            await _pointRepository.AddDevicePointsAsync(points);
         }
 
         /// <inheritdoc/>
         public async Task<IEnumerable<DevicePointDto>> ExportPointsAsync(int deviceId)
         {
-            try
-            {
-                _logger.LogInformation("开始导出设备点位: {DeviceId}", deviceId);
+            var points = await _pointRepository.GetAllAsync();
+            var devicePoints = points.Where(p => p.DeviceId == deviceId);
+            return devicePoints.Select(MapToDto);
+        }
 
-                var points = await _devicePointRepository.GetDevicePointsAsync(deviceId);
-                var dtos = _mapper.Map<IEnumerable<DevicePointDto>>(points);
-
-                _logger.LogInformation("设备点位导出成功: {DeviceId}, 数量: {Count}", deviceId, dtos.Count());
-                return dtos;
-            }
-            catch (Exception ex)
+        private DevicePointDto MapToDto(DevicePoint point)
+        {
+            return new DevicePointDto
             {
-                _logger.LogError(ex, "导出设备点位失败: {DeviceId}", deviceId);
-                throw;
-            }
+                Id = point.Id,
+                Name = point.Name,
+                DeviceId = point.DeviceId,
+                Address = point.Address,
+                DataType = point.DataType,
+                ReadWrite = point.ReadWrite,
+                ScanRate = point.ScanRate,
+                Enable = point.Enable,
+                CreateTime = point.CreateTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                Status = point.Status,
+                Remark = point.Remark
+            };
         }
     }
 } 

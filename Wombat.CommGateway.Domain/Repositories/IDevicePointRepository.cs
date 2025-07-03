@@ -13,6 +13,40 @@ namespace Wombat.CommGateway.Domain.Repositories
     public interface IDevicePointRepository : IRepositoryKey<DevicePoint>
     {
         /// <summary>
+        /// 获取所有设备点位
+        /// </summary>
+        /// <returns>所有设备点位列表</returns>
+        Task<IEnumerable<DevicePoint>> GetAllAsync();
+
+        /// <summary>
+        /// 根据ID获取设备点位
+        /// </summary>
+        /// <param name="id">点位ID</param>
+        /// <returns>设备点位</returns>
+        Task<DevicePoint> GetByIdAsync(int id);
+
+        /// <summary>
+        /// 插入设备点位
+        /// </summary>
+        /// <param name="devicePoint">设备点位</param>
+        /// <returns>插入结果</returns>
+        Task<bool> InsertAsync(DevicePoint devicePoint);
+
+        /// <summary>
+        /// 更新设备点位
+        /// </summary>
+        /// <param name="devicePoint">设备点位</param>
+        /// <returns>更新结果</returns>
+        Task<bool> UpdateAsync(DevicePoint devicePoint);
+
+        /// <summary>
+        /// 删除设备点位
+        /// </summary>
+        /// <param name="devicePoint">设备点位</param>
+        /// <returns>删除结果</returns>
+        Task<bool> DeleteAsync(DevicePoint devicePoint);
+
+        /// <summary>
         /// 获取设备点位列表
         /// </summary>
         /// <param name="deviceId">设备ID</param>
@@ -25,8 +59,6 @@ namespace Wombat.CommGateway.Domain.Repositories
         /// <param name="id">点位ID</param>
         /// <returns>设备点位</returns>
         Task<DevicePoint> GetDevicePointAsync(int id);
-
-
 
         /// <summary>
         /// 删除设备点位

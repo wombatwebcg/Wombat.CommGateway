@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Wombat.CommGateway.Domain.Entities;
+using Wombat.CommGateway.Domain.Enums;
 
 namespace Wombat.CommGateway.Application.DTOs
 {
@@ -20,6 +21,21 @@ namespace Wombat.CommGateway.Application.DTOs
         public string Name { get; set; }
 
         /// <summary>
+        /// 设备组ID
+        /// </summary>
+        public int DeviceGroupId { get; set; }
+
+        /// <summary>
+        /// 设备ID
+        /// </summary>
+        public int DeviceId { get; set; }
+
+        /// <summary>
+        /// 设备名称
+        /// </summary>
+        public string DeviceName { get; set; }
+
+        /// <summary>
         /// 点位地址
         /// </summary>
         public string Address { get; set; }
@@ -27,7 +43,12 @@ namespace Wombat.CommGateway.Application.DTOs
         /// <summary>
         /// 数据类型
         /// </summary>
-        public string DataType { get; set; }
+        public DataType DataType { get; set; }
+
+        /// <summary>
+        /// 读写类型
+        /// </summary>
+        public ReadWriteType ReadWrite { get; set; }
 
         /// <summary>
         /// 扫描周期（毫秒）
@@ -37,27 +58,22 @@ namespace Wombat.CommGateway.Application.DTOs
         /// <summary>
         /// 是否启用
         /// </summary>
-        public bool IsEnabled { get; set; }
-
-        /// <summary>
-        /// 设备ID
-        /// </summary>
-        public int DeviceId { get; set; }
-
-        /// <summary>
-        /// 点位属性
-        /// </summary>
-        public Dictionary<string, string> Properties { get; set; }
+        public bool Enable { get; set; }
 
         /// <summary>
         /// 创建时间
         /// </summary>
-        public DateTime CreateTime { get; set; }
+        public string CreateTime { get; set; }
 
         /// <summary>
-        /// 更新时间
+        /// 状态
         /// </summary>
-        public DateTime? UpdateTime { get; set; }
+        public DataPointStatus Status { get; set; }
+
+        /// <summary>
+        /// 备注
+        /// </summary>
+        public string Remark { get; set; }
     }
 
     /// <summary>
@@ -65,35 +81,15 @@ namespace Wombat.CommGateway.Application.DTOs
     /// </summary>
     public class CreateDevicePointDto
     {
-
-        /// <summary>
-        /// 设备ID
-        /// </summary>
-        public int DeviceId { get; set; }
-
-        /// <summary>
-        /// 点位名称
-        /// </summary>
         public string Name { get; set; }
-
-        /// <summary>
-        /// 点位地址
-        /// </summary>
+        public int DeviceGroupId { get; set; }
+        public int DeviceId { get; set; }
         public string Address { get; set; }
-
-        /// <summary>
-        /// 数据类型
-        /// </summary>
-        public string DataType { get; set; }
-
-        /// <summary>
-        /// 扫描周期（毫秒）
-        /// </summary>
+        public DataType DataType { get; set; }
+        public ReadWriteType ReadWrite { get; set; }
         public int ScanRate { get; set; }
-
-        /// <summary>
-        /// 点位属性
-        /// </summary>
+        public bool Enable { get; set; }
+        public string Remark { get; set; }
         public Dictionary<string, string> Properties { get; set; }
     }
 
@@ -125,11 +121,32 @@ namespace Wombat.CommGateway.Application.DTOs
         /// <summary>
         /// 是否启用
         /// </summary>
-        public bool? IsEnabled { get; set; }
+        public bool? Enable { get; set; }
 
         /// <summary>
         /// 点位属性
         /// </summary>
         public Dictionary<string, string> Properties { get; set; }
+    }
+
+    public class PointQueryDto
+    {
+        public int? DeviceId { get; set; }
+        public int? DataType { get; set; }
+        public int? Status { get; set; }
+        public int? GroupId { get; set; }
+        public int Page { get; set; }
+        public int PageSize { get; set; }
+    }
+
+    public class PointListResponseDto
+    {
+        public List<DevicePointDto> Items { get; set; }
+        public int Total { get; set; }
+    }
+
+    public class UpdateDevicePointEnableDto
+    {
+        public bool Enable { get; set; }
     }
 } 
