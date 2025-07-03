@@ -1,0 +1,9 @@
+﻿global using System;
+global using Wombat.Extensions.AutoGenerator.Attributes;
+global using Microsoft.Extensions.Configuration;
+global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Hosting;
+global using Microsoft.Extensions.Logging;
+global using System.Collections.Generic;
+global using Wombat.Extensions.AutoGenerator;
+global using Wombat.AOP.Fody.Attributes;
