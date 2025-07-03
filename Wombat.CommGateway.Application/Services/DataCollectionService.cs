@@ -117,7 +117,7 @@ namespace Wombat.CommGateway.Application.Services
         {
             try
             {
-                await _communicationChannelService.WriteDataAsync(pointId, value);
+
             }
             catch (Exception ex)
             {
@@ -131,7 +131,7 @@ namespace Wombat.CommGateway.Application.Services
         {
             try
             {
-                await _communicationChannelService.BatchWriteDataAsync(pointValues);
+
             }
             catch (Exception ex)
             {

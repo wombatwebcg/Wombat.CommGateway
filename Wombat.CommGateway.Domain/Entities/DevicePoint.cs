@@ -36,6 +36,8 @@ namespace Wombat.CommGateway.Domain.Entities
         /// <summary>
         /// 点位属性
         /// </summary>
+        /// 
+        [JsonMap]
         public Dictionary<string, string> Properties { get; set; }
 
         /// <summary>

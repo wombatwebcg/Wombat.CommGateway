@@ -10,6 +10,7 @@ using Wombat.CommGateway.Application.Interfaces;
 using Wombat.CommGateway.Domain.Entities;
 using Wombat.CommGateway.Domain.Repositories;
 using Wombat.Infrastructure;
+using AutoMapper;
 
 namespace Wombat.CommGateway.Application.Services
 {
@@ -21,6 +22,7 @@ namespace Wombat.CommGateway.Application.Services
     {
         private readonly IDeviceGroupRepository _deviceGroupRepository;
         private readonly ILogger<DeviceGroupService> _logger;
+        private readonly IMapper _mapper;
 
         /// <summary>
         /// 构造函数
@@ -29,24 +31,33 @@ namespace Wombat.CommGateway.Application.Services
         /// <param name="logger">日志记录器</param>
         public DeviceGroupService(
             IDeviceGroupRepository deviceGroupRepository,
-            ILogger<DeviceGroupService> logger)
+            ILogger<DeviceGroupService> logger,
+            IMapper mapper)
         {
             _deviceGroupRepository = deviceGroupRepository ?? throw new ArgumentNullException(nameof(deviceGroupRepository));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _mapper = mapper;
         }
 
         /// <inheritdoc/>
         public async Task<List<DeviceGroupDto>> GetAllDeviceGroupsAsync()
         {
             var deviceGroups = await _deviceGroupRepository.GetAllAsync();
-            return deviceGroups.Select(MapToDto).ToList();
+            if (deviceGroups != null)
+            {
+                var dtos = _mapper.Map<List<DeviceGroupDto>>(deviceGroups);
+                return dtos;
+            }
+            return null;
         }
 
         /// <inheritdoc/>
         public async Task<DeviceGroupDto> GetDeviceGroupByIdAsync(int id)
         {
             var deviceGroup = await _deviceGroupRepository.GetByIdAsync(id);
-            return deviceGroup == null ? null : MapToDto(deviceGroup);
+            if (deviceGroup == null)
+                return null;
+            return _mapper.Map<DeviceGroupDto>(deviceGroup);
         }
 
         /// <inheritdoc/>
@@ -54,19 +65,18 @@ namespace Wombat.CommGateway.Application.Services
         {
             var deviceGroup = new DeviceGroup(dto.Name, dto.Description);
             await _deviceGroupRepository.InsertAsync(deviceGroup);
-            return MapToDto(deviceGroup);
+            return _mapper.Map<DeviceGroupDto>(deviceGroup);
         }
 
         /// <inheritdoc/>
-        public async Task<DeviceGroupDto> UpdateDeviceGroupAsync(int id, UpdateDeviceGroupDto dto)
+        public async Task<int> UpdateDeviceGroupAsync(int id, UpdateDeviceGroupDto dto)
         {
             var deviceGroup = await _deviceGroupRepository.GetByIdAsync(id);
             if (deviceGroup == null)
                 throw new ArgumentException($"DeviceGroup with id {id} not found.");
 
             deviceGroup.UpdateInfo(dto.Name, dto.Description);
-            await _deviceGroupRepository.UpdateAsync(deviceGroup);
-            return MapToDto(deviceGroup);
+            return await _deviceGroupRepository.UpdateAsync(deviceGroup);
         }
 
         /// <inheritdoc/>
@@ -80,16 +90,6 @@ namespace Wombat.CommGateway.Application.Services
             return true;
         }
 
-        private DeviceGroupDto MapToDto(DeviceGroup deviceGroup)
-        {
-            return new DeviceGroupDto
-            {
-                Id = deviceGroup.Id,
-                Name = deviceGroup.Name,
-                Description = deviceGroup.Description,
-                CreateTime = deviceGroup.CreateTime.ToString("yyyy-MM-dd HH:mm:ss"),
-                UpdateTime = deviceGroup.UpdateTime.ToString("yyyy-MM-dd HH:mm:ss")
-            };
-        }
+
     }
 } 

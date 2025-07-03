@@ -35,7 +35,7 @@ namespace Wombat.CommGateway.Application.Interfaces
         /// <param name="id">设备组ID</param>
         /// <param name="dto">更新设备组请求</param>
         /// <returns>更新后的设备组信息</returns>
-        Task<DeviceGroupDto> UpdateDeviceGroupAsync(int id, UpdateDeviceGroupDto dto);
+        Task<int> UpdateDeviceGroupAsync(int id, UpdateDeviceGroupDto dto);
 
         /// <summary>
         /// 删除设备组

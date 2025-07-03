@@ -623,12 +623,12 @@ const handleAdd = () => {
       if (device) {
         form.deviceId = device.id
         form.deviceGroupId = device.deviceGroupId || 0
-        handleDeviceGroupChange(form.deviceGroupId)
+        handleDeviceGroupChange(form.deviceGroupId, true)
       }
     } else if (currentNode.nodeType === 'group') {
       // 如果选中的是设备组节点，只填充设备组ID
       form.deviceGroupId = currentNode.id
-      handleDeviceGroupChange(form.deviceGroupId)
+      handleDeviceGroupChange(form.deviceGroupId, true)
     }
   }
   
@@ -758,13 +758,12 @@ const handleEdit = (row: Point) => {
   const device = devices.value.find(d => d.id === row.deviceId)
   const deviceGroupId = device?.deviceGroupId || 0
   
+  // 先根据设备组ID筛选设备列表，但不重置deviceId
+  handleDeviceGroupChange(deviceGroupId, false)
   Object.assign(form, {
     ...row,
     deviceGroupId
   })
-  
-  // 根据设备组ID筛选设备列表
-  handleDeviceGroupChange(deviceGroupId)
   dialogVisible.value = true
 }
 
@@ -1145,8 +1144,10 @@ const initDeviceGroupOptions = async () => {
 }
 
 // 处理设备组变更
-const handleDeviceGroupChange = (groupId: number) => {
-  form.deviceId = 0
+const handleDeviceGroupChange = (groupId: number, resetDeviceId: boolean = true) => {
+  if (resetDeviceId) {
+    form.deviceId = 0
+  }
   if (groupId) {
     filteredDevices.value = devices.value.filter(device => device.deviceGroupId === groupId)
   } else {

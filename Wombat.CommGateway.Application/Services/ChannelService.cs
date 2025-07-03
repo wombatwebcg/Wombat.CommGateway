@@ -9,6 +9,7 @@ using Wombat.CommGateway.Domain.Repositories;
 using Wombat.CommGateway.Infrastructure.Communication;
 using Wombat.CommGateway.Infrastructure.Repositories;
 using Wombat.Infrastructure;
+using AutoMapper;
 
 namespace Wombat.CommGateway.Application.Services
 {
@@ -22,16 +23,19 @@ namespace Wombat.CommGateway.Application.Services
         private readonly IProtocolConfigRepository _protocolConfigRepository;
         private readonly IProtocolFactory _protocolFactory;
         private readonly Dictionary<int, IProtocol> _protocolInstances;
+        private readonly IMapper _mapper;
 
         public ChannelService(
             IChannelRepository channelRepository,
             IProtocolConfigRepository protocolConfigRepository,
-            IProtocolFactory protocolFactory)
+            IProtocolFactory protocolFactory,
+            IMapper mapper)
         {
             _channelRepository = channelRepository ?? throw new ArgumentNullException(nameof(channelRepository));
             _protocolConfigRepository = protocolConfigRepository ?? throw new ArgumentNullException(nameof(protocolConfigRepository));
             _protocolFactory = protocolFactory ?? throw new ArgumentNullException(nameof(protocolFactory));
             _protocolInstances = new Dictionary<int, IProtocol>();
+            _mapper = mapper ?? throw new ArgumentNullException();
         }
 
         public async Task<List<ChannelDto>> GetListAsync()
@@ -95,30 +99,19 @@ namespace Wombat.CommGateway.Application.Services
             };
         }
 
-        public async Task<ChannelDto> UpdateConfigurationAsync(int id, Dictionary<string, string> configuration)
+        public async Task<int> UpdateConfigurationAsync(int id, Dictionary<string, string> configuration)
         {
             var channel = await _channelRepository.GetByIdAsync(id);
             if (channel == null)
                 throw new ArgumentException($"Communication channel with id {id} not found.");
 
             channel.UpdateConfiguration(configuration);
-            await _channelRepository.UpdateAsync(channel);
+            return await _channelRepository.UpdateAsync(channel);
 
-            return new ChannelDto
-            {
-                Id = channel.Id,
-                Name = channel.Name,
-                Type = (int)channel.Type,
-                Protocol = (int)channel.Protocol,
-                Role = (int)channel.Role,
-                Status = (int)channel.Status,
-                Enable = channel.Enable,
-                CreateTime = channel.CreateTime,
-                Configuration = channel.Configuration
-            };
+           
         }
 
-        public async Task<ChannelDto> UpdateAsync(int id, UpdateChannelDto dto)
+        public async Task<int> UpdateAsync(int id, UpdateChannelDto dto)
         {
             var channel = await _channelRepository.GetByIdAsync(id);
             if (channel == null)
@@ -129,20 +122,9 @@ namespace Wombat.CommGateway.Application.Services
                 channel.UpdateConfiguration(dto.Configuration);
             }
 
-            await _channelRepository.UpdateAsync(channel);
+            return await _channelRepository.UpdateAsync(channel);
 
-            return new ChannelDto
-            {
-                Id = channel.Id,
-                Name = channel.Name,
-                Type = (int)channel.Type,
-                Protocol = (int)channel.Protocol,
-                Role = (int)channel.Role,
-                Status = (int)channel.Status,
-                Enable = channel.Enable,
-                CreateTime = channel.CreateTime,
-                Configuration = channel.Configuration
-            };
+           
         }
 
         public async Task<bool> DeleteAsync(int id)
@@ -161,7 +143,7 @@ namespace Wombat.CommGateway.Application.Services
             return true;
         }
 
-        public async Task<ChannelDto> StartAsync(int id)
+        public async Task<bool> StartAsync(int id)
         {
             var channel = await _channelRepository.GetByIdAsync(id);
             if (channel == null)
@@ -176,23 +158,13 @@ namespace Wombat.CommGateway.Application.Services
 
             await protocol.ConnectAsync();
             channel.UpdateStatus(ChannelStatus.Running);
-            await _channelRepository.UpdateAsync(channel);
+            var count = await _channelRepository.UpdateAsync(channel);
+            return count > 0;
 
-            return new ChannelDto
-            {
-                Id = channel.Id,
-                Name = channel.Name,
-                Type = (int)channel.Type,
-                Protocol = (int)channel.Protocol,
-                Role = (int)channel.Role,
-                Status = (int)channel.Status,
-                Enable = channel.Enable,
-                CreateTime = channel.CreateTime,
-                Configuration = channel.Configuration
-            };
+           
         }
 
-        public async Task<ChannelDto> StopAsync(int id)
+        public async Task<bool> StopAsync(int id)
         {
             var channel = await _channelRepository.GetByIdAsync(id);
             if (channel == null)
@@ -204,43 +176,19 @@ namespace Wombat.CommGateway.Application.Services
             }
 
             channel.UpdateStatus(ChannelStatus.Stopped);
-            await _channelRepository.UpdateAsync(channel);
-
-            return new ChannelDto
-            {
-                Id = channel.Id,
-                Name = channel.Name,
-                Type = (int)channel.Type,
-                Protocol = (int)channel.Protocol,
-                Role = (int)channel.Role,
-                Status = (int)channel.Status,
-                Enable = channel.Enable,
-                CreateTime = channel.CreateTime,
-                Configuration = channel.Configuration
-            };
+            var count = await _channelRepository.UpdateAsync(channel);
+            return count > 0;
         }
 
-        public async Task<ChannelDto> UpdateStatusAsync(int id, int status)
+        public async Task<int> UpdateStatusAsync(int id, int status)
         {
             var channel = await _channelRepository.GetByIdAsync(id);
             if (channel == null)
                 throw new ArgumentException($"Communication channel with id {id} not found.");
 
             channel.UpdateStatus((ChannelStatus)status);
-            await _channelRepository.UpdateAsync(channel);
+            return await _channelRepository.UpdateAsync(channel);
 
-            return new ChannelDto
-            {
-                Id = channel.Id,
-                Name = channel.Name,
-                Type = (int)channel.Type,
-                Protocol = (int)channel.Protocol,
-                Role = (int)channel.Role,
-                Status = (int)channel.Status,
-                Enable = channel.Enable,
-                CreateTime = channel.CreateTime,
-                Configuration = channel.Configuration
-            };
         }
 
         public async Task<Dictionary<int, object>> GetRealtimeDataAsync(int deviceId)
@@ -259,42 +207,22 @@ namespace Wombat.CommGateway.Application.Services
             return result;
         }
 
-        public async Task WriteDataAsync(int pointId, object value)
-        {
-            // TODO: 实现数据写入逻辑
-            await Task.CompletedTask;
-        }
 
-        public async Task BatchWriteDataAsync(Dictionary<int, object> pointValues)
-        {
-            // TODO: 实现批量数据写入逻辑
-            await Task.CompletedTask;
-        }
 
         /// <summary>
         /// 更新通道启用状态
         /// </summary>
-        public async Task<ChannelDto> UpdateEnableAsync(int id, bool enable)
+        public async Task<bool> UpdateEnableAsync(int id, bool enable)
         {
             var channel = await _channelRepository.GetByIdAsync(id);
             if (channel == null)
                 throw new ArgumentException($"Communication channel with id {id} not found.");
 
             channel.Enable = enable;
-            await _channelRepository.UpdateAsync(channel);
+           return (await _channelRepository.UpdateAsync(channel)>0);
 
-            return new ChannelDto
-            {
-                Id = channel.Id,
-                Name = channel.Name,
-                Type = (int)channel.Type,
-                Protocol = (int)channel.Protocol,
-                Role = (int)channel.Role,
-                Status = (int)channel.Status,
-                Enable = channel.Enable,
-                CreateTime = channel.CreateTime,
-                Configuration = channel.Configuration
-            };
         }
+
+
     }
 } 

@@ -21,6 +21,9 @@ namespace Wombat.CommGateway.Application.Mappings
             CreateMap<Device, CreateDeviceDto>().ReverseMap();
             CreateMap<Device, UpdateDeviceDto>().ReverseMap();
 
+            CreateMap<DeviceGroup, DeviceGroupDto>().ReverseMap();
+            CreateMap<DeviceGroup, CreateDeviceGroupDto>().ReverseMap();
+            CreateMap<DeviceGroup, UpdateDeviceGroupDto>().ReverseMap();
             // 设备点位映射
             CreateMap<DevicePoint, DevicePointDto>().ReverseMap();
             CreateMap<DevicePoint, CreateDevicePointDto>().ReverseMap();
