@@ -32,6 +32,18 @@ namespace Wombat.CommGateway.API.Controllers
             return Success(channel);
         }
 
+
+        /// <summary>
+        /// 更新设备组
+        /// </summary>
+        [HttpPut("{id}")]
+        public async Task<ActionResult<DeviceGroupDto>> UpdateDeviceGroup(int id, [FromBody] UpdateChannelDto dto)
+        {
+            var deviceGroup = await _channelService.UpdateAsync(id, dto);
+            return Success(deviceGroup);
+        }
+
+
         /// <summary>
         /// 更新通道状态
         /// </summary>

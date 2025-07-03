@@ -376,9 +376,17 @@ const getChannels = async () => {
         const transformedData = res.map((item: any) => {
           console.log('Processing item:', item)
           
+          // 确保configuration为对象，保留后端原始数据
           let configuration
           try {
-            configuration = item.configuration === 'null' ? {} : JSON.parse(item.configuration)
+            // 如果是字符串则解析，如果已经是对象则直接使用
+            if (typeof item.configuration === 'string') {
+              configuration = item.configuration === 'null' ? {} : JSON.parse(item.configuration)
+            } else {
+              // 如果已经是对象，直接使用
+              configuration = item.configuration || {}
+            }
+            console.log(`通道${item.id}配置:`, configuration)
           } catch (parseError) {
             console.warn(`解析通道${item.id}配置失败:`, parseError)
             configuration = {}
@@ -390,7 +398,7 @@ const getChannels = async () => {
             type: item.type,
             protocol: item.protocol,
             role: item.role || ChannelRole.Client, // 默认为客户端角色
-            configuration: configuration,
+            configuration: configuration, // 保留原始配置对象
             enable: item.enable,
             status: item.status,
             createTime: item.createTime
@@ -452,50 +460,10 @@ const handleAdd = () => {
 // 编辑通道
 const handleEdit = async (row: Channel) => {
   console.log('Editing row:', row)
+  console.log('Row configuration (original):', row.configuration)
+  
   dialogType.value = 'edit'
   dialogVisible.value = true
-  
-  // 确保 configuration 是一个对象
-  const configuration = typeof row.configuration === 'string' 
-    ? JSON.parse(row.configuration) 
-    : row.configuration || {}
-  console.log('Parsed configuration:', configuration)
-
-  // 根据通道类型设置默认配置
-  if (row.type === ChannelType.Serial) {
-    form.configuration = {
-      portName: configuration.portName || '',
-      baudRate: configuration.baudRate || '9600',
-      dataBits: configuration.dataBits || '8',
-      stopBits: configuration.stopBits || '1',
-      parity: configuration.parity || 'None'
-    }
-  } else if (row.type === ChannelType.Ethernet) {
-    form.configuration = {
-      ipAddress: configuration.ipAddress || '',
-      port: configuration.port || '502',
-      connectionType: configuration.connectionType || 'TCP'
-    }
-    
-    // 如果是西门子S7协议，添加CPU类型
-    if (row.protocol === ProtocolType.SiemensS7) {
-      form.configuration.cpuType = configuration.cpuType || 'S7-1200'
-      
-      // 如果没有设置端口或端口不是默认的西门子端口，设置为102
-      if (!configuration.port || configuration.port === '502') {
-        form.configuration.port = '102'
-      }
-    }
-  }
-  console.log('Form configuration after type check:', form.configuration)
-
-  // 使用 nextTick 确保表单更新
-  await nextTick()
-  
-  // 重置表单验证
-  if (formRef.value) {
-    formRef.value.clearValidate()
-  }
 
   Object.assign(form, {
     id: row.id,
@@ -506,6 +474,55 @@ const handleEdit = async (row: Channel) => {
     enable: row.enable,
     status: row.status
   })
+
+  // 确保 configuration 是响应式对象
+  if (!form.configuration || typeof form.configuration !== 'object') {
+    form.configuration = {}
+  }
+  
+  // 深拷贝configuration，避免引用污染
+  const configuration = typeof row.configuration === 'string' 
+    ? JSON.parse(row.configuration) 
+    : JSON.parse(JSON.stringify(row.configuration || {}))
+  
+  console.log('Parsed configuration:', configuration)
+
+  if (row.type === ChannelType.Serial) {
+    Object.assign(form.configuration, {
+      // 只在字段缺失时补默认值，避免覆盖后端已有数据
+      portName: configuration.portName !== undefined ? configuration.portName : '',
+      baudRate: configuration.baudRate !== undefined ? configuration.baudRate : '9600',
+      dataBits: configuration.dataBits !== undefined ? configuration.dataBits : '8',
+      stopBits: configuration.stopBits !== undefined ? configuration.stopBits : '1',
+      parity: configuration.parity !== undefined ? configuration.parity : 'None'
+    })
+  } else if (row.type === ChannelType.Ethernet) {
+    Object.assign(form.configuration, {
+      // 只在字段缺失时补默认值，避免覆盖后端已有数据
+      ipAddress: configuration.ipAddress !== undefined ? configuration.ipAddress : '',
+      port: configuration.port !== undefined ? configuration.port : '502',
+      connectionType: configuration.connectionType !== undefined ? configuration.connectionType : 'TCP'
+    })
+    
+    // 如果是西门子S7协议，添加CPU类型
+    if (row.protocol === ProtocolType.SiemensS7) {
+      form.configuration.cpuType = configuration.cpuType !== undefined ? configuration.cpuType : 'S7-1200'
+      if (!configuration.port || configuration.port === '502') {
+        form.configuration.port = '102'
+      }
+    } else {
+      // 非西门子协议时移除cpuType
+      if ('cpuType' in form.configuration) {
+        delete form.configuration.cpuType
+      }
+    }
+  }
+  console.log('Form configuration after type check:', form.configuration)
+
+  await nextTick()
+  if (formRef.value) {
+    formRef.value.clearValidate()
+  }
   console.log('Final form state:', form)
 }
 

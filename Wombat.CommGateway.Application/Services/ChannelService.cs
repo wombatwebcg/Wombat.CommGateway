@@ -116,7 +116,7 @@ namespace Wombat.CommGateway.Application.Services
             var channel = await _channelRepository.GetByIdAsync(id);
             if (channel == null)
                 throw new ArgumentException($"Communication channel with id {id} not found.");
-
+            _mapper.Map(dto, channel);
             if (dto.Configuration != null)
             {
                 channel.UpdateConfiguration(dto.Configuration);

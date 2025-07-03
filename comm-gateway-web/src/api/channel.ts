@@ -19,8 +19,8 @@ export enum ProtocolType {
 
 // 通道角色枚举
 export enum ChannelRole {
-  Client = 1,
-  Server = 2
+  Client = 0,
+  Server = 1
 }
 
 export interface Channel {
