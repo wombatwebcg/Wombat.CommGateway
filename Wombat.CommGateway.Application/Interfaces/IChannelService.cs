@@ -13,7 +13,7 @@ namespace Wombat.CommGateway.Application.Interfaces
         /// <summary>
         /// 获取通道列表
         /// </summary>
-        Task<List<ChannelDto>> GetListAsync();
+        Task<List<ChannelDto>> GetAllChaneelsAsync();
 
         /// <summary>
         /// 根据ID获取通道
@@ -58,10 +58,7 @@ namespace Wombat.CommGateway.Application.Interfaces
         /// </summary>
         Task<bool> StopAsync(int id);
 
-        /// <summary>
-        /// 获取实时数据
-        /// </summary>
-        Task<Dictionary<int, object>> GetRealtimeDataAsync(int deviceId);
+
 
     }
 } 

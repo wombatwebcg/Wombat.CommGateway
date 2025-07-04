@@ -70,7 +70,7 @@ namespace Wombat.CommGateway.API.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ChannelDto>>> GetChannels()
         {
-            var channels = await _channelService.GetListAsync();
+            var channels = await _channelService.GetAllChaneelsAsync();
             return Success(channels);
         }
 
@@ -80,7 +80,7 @@ namespace Wombat.CommGateway.API.Controllers
         [HttpGet("nameList")]
         public async Task<ActionResult<List<string>>> GetChannelNameList()
         {
-            var channels = await _channelService.GetListAsync();
+            var channels = await _channelService.GetAllChaneelsAsync();
             var nameList = channels.Select(c => c.Name).ToList();
             return Success(nameList);
         }

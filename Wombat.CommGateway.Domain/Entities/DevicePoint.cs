@@ -16,79 +16,40 @@ namespace Wombat.CommGateway.Domain.Entities
 
     public class DevicePoint : Entity
     {
-        /// <summary>
-        /// 点位名称
-        /// </summary>
+
         public string Name { get; set; }
 
-        /// <summary>
-        /// 点位地址
-        /// </summary>
         public string Address { get; set; }
 
-        /// <summary>
-        /// 扫描周期(毫秒)
-        /// </summary>
         public int ScanRate { get; set; }
 
 
-
-        /// <summary>
-        /// 点位属性
-        /// </summary>
-        /// 
         [JsonMap]
         public Dictionary<string, string> Properties { get; set; }
 
-        /// <summary>
-        /// 创建时间
-        /// </summary>
         public DateTime CreateTime { get; set; }
 
-        /// <summary>
-        /// 更新时间
-        /// </summary>
         public DateTime UpdateTime { get; set; }
 
 
-
-        /// <summary>
-        /// 设备ID
-        /// </summary>
-        /// 
         [Navigate(nameof(Device.Id))]
         public int DeviceId { get; set; }
 
-        /// <summary>
-        /// 所属设备
-        /// </summary>
+
         [Navigate(nameof(DeviceId))]
         public Device Device { get; set; }
 
-        /// <summary>
-        /// 数据类型
-        /// </summary>
         public DataType DataType { get; set; }
 
-        /// <summary>
-        /// 读写类型
-        /// </summary>
         public ReadWriteType ReadWrite { get; set; }
 
-        /// <summary>
-        /// 是否启用（新字段）
-        /// </summary>
         public bool Enable { get; set; }
 
-        /// <summary>
-        /// 状态
-        /// </summary>
         public DataPointStatus Status { get; set; }
 
-        /// <summary>
-        /// 备注
-        /// </summary>
         public string Remark { get; set; }
+
+        public string Value { get; set; }
 
         /// <summary>
         /// 私有构造函数

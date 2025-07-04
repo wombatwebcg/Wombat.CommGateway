@@ -121,7 +121,7 @@ namespace Wombat.CommGateway.API
             //builder.Services.AddScoped<RequestBody>();
 
             //builder.Services.AddScoped<Wombat.CommGateway.API.RequestBody>();
-
+            builder.Services.AddHostedService<DataCollectionService>();
 
 
             var app = builder.Build();

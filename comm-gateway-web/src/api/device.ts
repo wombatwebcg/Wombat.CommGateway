@@ -106,5 +106,5 @@ export function updateDeviceStatus(id: number, status: string) {
 // 更新设备使能状态
 export function updateDeviceEnable(id: number, enable: boolean) {
   console.log('API调用 - updateDeviceEnable:', id, enable)
-  return request.put(`/Device/${id}/enable`, { enable })
+  return request.put(`/api/Device/${id}/enable`, { enable })
 } 

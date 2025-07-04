@@ -38,7 +38,7 @@ namespace Wombat.CommGateway.Application.Services
             _mapper = mapper ?? throw new ArgumentNullException();
         }
 
-        public async Task<List<ChannelDto>> GetListAsync()
+        public async Task<List<ChannelDto>> GetAllChaneelsAsync()
         {
             var channels = await _channelRepository.GetAllAsync();
             return channels.ConvertAll(channel => new ChannelDto
@@ -189,22 +189,6 @@ namespace Wombat.CommGateway.Application.Services
             channel.UpdateStatus((ChannelStatus)status);
             return await _channelRepository.UpdateAsync(channel);
 
-        }
-
-        public async Task<Dictionary<int, object>> GetRealtimeDataAsync(int deviceId)
-        {
-            var channel = await _channelRepository.GetByIdAsync(deviceId);
-            if (channel == null)
-                throw new ArgumentException($"Communication channel with id {deviceId} not found.");
-
-            if (!_protocolInstances.TryGetValue(deviceId, out var protocol))
-            {
-                throw new InvalidOperationException($"Channel {deviceId} is not running.");
-            }
-
-            var result = new Dictionary<int, object>();
-            // TODO: 实现实时数据读取逻辑
-            return result;
         }
 
 

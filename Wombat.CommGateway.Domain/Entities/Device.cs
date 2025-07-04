@@ -15,37 +15,17 @@ namespace Wombat.CommGateway.Domain.Entities
 
     public class Device : AggregateRoot
     {
-        /// <summary>
-        /// 设备名称
-        /// </summary>
+
         public string Name { get; set; }
 
-        /// <summary>
-        /// 设备描述
-        /// </summary>
+
         public string Description { get; set; }
 
-
-
-
-
-
-
-        /// <summary>
-        /// 设备状态
-        /// </summary>
         public bool Enable { get; set; }
 
-        /// <summary>
-        /// 设备属性
-        /// </summary>
-        /// 
         [JsonMap]
         public Dictionary<string, string> Properties { get; set; }
 
-        /// <summary>
-        /// 所属设备组
-        /// </summary>
         [Navigate(nameof(DeviceGroupId))]
         public DeviceGroup DeviceGroup { get; set; }
 
@@ -57,38 +37,20 @@ namespace Wombat.CommGateway.Domain.Entities
         [Navigate(nameof(ChannelId))]
         public Channel Channel { get; set; }
 
-
         [Navigate(nameof(Channel.Id))]
         public int ChannelId { get; set; }
 
-
-        /// <summary>
-        /// 设备点位列表
-        /// </summary>
-        /// 
         [Navigate(nameof(DevicePoint.DeviceId))]
         public List<DevicePoint>? Points { get; set; }
 
-        /// <summary>
-        /// 创建时间
-        /// </summary>
         public DateTime CreateTime { get; set; }
 
-        /// <summary>
-        /// 更新时间
-        /// </summary>
         public DateTime UpdateTime { get; set; }
 
 
 
         private Device() { }
 
-        /// <summary>
-        /// 构造函数
-        /// </summary>
-        /// <param name="name">设备名称</param>
-        /// <param name="deviceType">设备类型</param>
-        /// <param name="address">设备地址</param>
         public Device(string name, int deviceGroupId, int channelId)
         {
             if (string.IsNullOrWhiteSpace(name))
