@@ -40,6 +40,11 @@
           <template #title>规则引擎</template>
         </el-menu-item>
 
+        <el-menu-item index="/point-monitor">
+          <el-icon><Monitor /></el-icon>
+          <template #title>点位监视</template>
+        </el-menu-item>
+
         <el-sub-menu index="/monitor">
           <template #title>
             <el-icon><Monitor /></el-icon>

@@ -22,6 +22,10 @@
           <el-icon><Monitor /></el-icon>
           <span>点位管理</span>
         </el-menu-item>
+        <el-menu-item index="/point-monitor">
+          <el-icon><Monitor /></el-icon>
+          <span>点位监视</span>
+        </el-menu-item>
         <el-menu-item index="/rule">
           <el-icon><Operation /></el-icon>
           <span>规则引擎</span>

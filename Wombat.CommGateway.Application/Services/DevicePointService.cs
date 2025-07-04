@@ -142,9 +142,10 @@ namespace Wombat.CommGateway.Application.Services
         /// <inheritdoc/>
         public async Task<List<DevicePointDto>> GetDevicePointsAsync(int deviceId)
         {
-            var points = await _pointRepository.GetAllAsync();
-            var devicePoints = points.Where(p => p.DeviceId == deviceId).ToList();
-            return devicePoints.Select(MapToDto).ToList();
+            var points = await _pointRepository.Select.Where(p => p.DeviceId == deviceId).ToListAsync() ;
+            if (points == null)
+                return null;
+            return _mapper.Map<List<DevicePointDto>>(points) ;
         }
 
 

@@ -128,17 +128,18 @@ const routes: RouteRecordRaw[] = [
               title: 'RPC日志',
               keepAlive: false
             }
-          },
-          {
-            path: 'points',
-            name: 'PointMonitor',
-            component: () => import('@/views/monitor/points.vue'),
-            meta: {
-              title: '点位监视',
-              keepAlive: false
-            }
           }
         ]
+      },
+      {
+        path: 'point-monitor',
+        name: 'PointMonitor',
+        component: () => import('@/views/monitor/index.vue'),
+        meta: {
+          title: '点位监视',
+          icon: 'Monitor',
+          keepAlive: false
+        }
       }
     ]
   }

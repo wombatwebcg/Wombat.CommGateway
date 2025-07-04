@@ -136,7 +136,7 @@ namespace Wombat.CommGateway.Application.Services
                     }
                     await Task.WhenAll(tasks);
                 }
-                await Task.Delay(10000);
+                await Task.Delay(1000);
             }
 
         }

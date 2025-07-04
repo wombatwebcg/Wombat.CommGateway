@@ -45,11 +45,13 @@ namespace Wombat.CommGateway.Application.DTOs
         /// </summary>
         public string CreateTime { get; set; }
 
-
+        public string UpdateTime { get; set; }
         public DataPointStatus Status { get; set; }
 
-
         public string Remark { get; set; }
+        public string Value { get; set; }
+
+
     }
 
     /// <summary>
