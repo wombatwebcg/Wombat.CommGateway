@@ -64,7 +64,7 @@ export function createDevice(data: Omit<Device, 'id' | 'createTime' | 'updateTim
 // 更新设备
 export function updateDevice(id: number, data: Partial<Device>) {
   return request({
-    url: `/api/Device/${id}`,
+      url: `/api/Device/${id}`,
     method: 'put',
     data
   })
@@ -106,9 +106,5 @@ export function updateDeviceStatus(id: number, status: string) {
 // 更新设备使能状态
 export function updateDeviceEnable(id: number, enable: boolean) {
   console.log('API调用 - updateDeviceEnable:', id, enable)
-  return request({
-    url: `/api/Device/${id}/enable`,
-    method: 'put',
-    data: { enable }
-  })
+  return request.put(`/Device/${id}/enable`, { enable })
 } 

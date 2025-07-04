@@ -58,6 +58,19 @@ namespace Wombat.CommGateway.API.Controllers
             return Success(point);
         }
 
+
+        /// <summary>
+        /// 获取点位详情
+        /// </summary>
+        [HttpGet("deviceGroup/{id}")]
+        public async Task<ActionResult<DevicePointDto>> GetPointByGrouupId(int id)
+        {
+            var point = await _pointService.GetPointByGroupIdAsync(id);
+            if (point == null)
+                return NotFound();
+            return Success(point);
+        }
+
         /// <summary>
         /// 创建设备点位
         /// </summary>

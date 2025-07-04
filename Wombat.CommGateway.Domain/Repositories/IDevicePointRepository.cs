@@ -40,6 +40,15 @@ namespace Wombat.CommGateway.Domain.Repositories
         /// <returns>设备点位</returns>
         Task<DevicePoint> GetDevicePointAsync(int id);
 
+
+        /// <summary>
+        /// 获取设备点位
+        /// </summary>
+        /// <param name="id">点位ID</param>
+        /// <returns>设备点位</returns>
+        Task<IEnumerable<DevicePoint>> GetDevicePointByGrouopAsync(int id);
+
+
         /// <summary>
         /// 删除设备点位
         /// </summary>

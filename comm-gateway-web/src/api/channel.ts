@@ -65,55 +65,93 @@ export interface ChannelResponse {
 
 // 获取通道列表
 export function getChannels() {
-  return request.get<ChannelResponse>('/api/Channel')
+  return request<ChannelResponse>({
+    url: '/api/Channel',
+    method: 'get'
+  })
 }
 
 // 获取通道名称列表
 export function getChannelNameList() {
-  return request.get<string[]>('/api/Channel/nameList')
+  return request<string[]>({
+    url: '/api/Channel/nameList',
+    method: 'get'
+  })
 }
 
 // 获取通道详情
 export function getChannel(id: number) {
-  return request.get<Channel>(`/api/Channel/${id}`)
+  return request<Channel>({
+    url: `/api/Channel/${id}`,
+    method: 'get'
+  })
 }
 
 // 创建通道
 export function createChannel(data: CreateChannelDto) {
-  return request.post<Channel>('/api/Channel', data)
+  return request<Channel>({
+    url: '/api/Channel',
+    method: 'post',
+    data
+  })
 }
 
 // 更新通道配置
 export function updateChannelConfiguration(id: number, configuration: Record<string, any>) {
-  return request.put(`/api/Channel/${id}/configuration`, configuration)
+  return request({
+    url: `/api/Channel/${id}/configuration`,
+    method: 'put',
+    data: configuration
+  })
 }
 
 // 更新通道
 export function updateChannel(id: number, data: UpdateChannelDto) {
-  return request.put(`/api/Channel/${id}`, data)
+  return request({
+    url: `/api/Channel/${id}`,
+    method: 'put',
+    data
+  })
 }
 
 // 更新通道状态
 export function updateChannelStatus(id: number, status: number) {
-  return request.put(`/api/Channel/${id}/status`, { status })
+  return request({
+    url: `/api/Channel/${id}/status`,
+    method: 'put',
+    data: { status }
+  })
 }
 
 // 更新通道状态
 export function updateChannelEnable(id: number, enable: boolean) {
-  return request.put(`/api/Channel/${id}/enable`, { enable: enable })
+  return request({
+    url: `/api/Channel/${id}/enable`,
+    method: 'put',
+    data: { enable: enable }
+  })
 }
 
 // 删除通道
 export function deleteChannel(id: number) {
-  return request.delete(`/api/Channel/${id}`)
+  return request({
+    url: `/api/Channel/${id}`,
+    method: 'delete'
+  })
 }
 
 // 启动通道
 export function startChannel(id: number) {
-  return request.post(`/api/Channel/${id}/start`)
+  return request({
+    url: `/api/Channel/${id}/start`,
+    method: 'post'
+  })
 }
 
 // 停止通道
 export function stopChannel(id: number) {
-  return request.post(`/api/Channel/${id}/stop`)
+  return request({
+    url: `/api/Channel/${id}/stop`,
+    method: 'post'
+  })
 } 

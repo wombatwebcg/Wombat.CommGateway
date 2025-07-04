@@ -7,6 +7,7 @@ using Wombat.Extensions.FreeSql;
 using Wombat.CommGateway.Domain.Entities;
 using Microsoft.Extensions.DependencyInjection;
 using Wombat.CommGateway.Domain.Repositories;
+using NPOI.SS.Formula.Functions;
 
 namespace Wombat.CommGateway.Infrastructure.Repositories
 {
@@ -18,20 +19,23 @@ namespace Wombat.CommGateway.Infrastructure.Repositories
     public class DevicePointRepository : BaseRepository<DevicePoint, GatawayDB>, IDevicePointRepository
     {
         private readonly IServiceProvider _service;
+        private readonly IDeviceRepository _deviceRepository;
 
         /// <summary>
         /// 构造函数
         /// </summary>
         /// <param name="freeSql">FreeSql实例</param>
-        public DevicePointRepository(IServiceProvider service) : base(service)
+        public DevicePointRepository(IServiceProvider service, IDeviceRepository deviceRepository) : base(service)
         {
             _service = service;
+            _deviceRepository = deviceRepository;
         }
 
         /// <inheritdoc/>
         public async Task<IEnumerable<DevicePoint>> GetAllAsync()
         {
-            return await Select.ToListAsync();
+            var points = await Select.ToListAsync();
+            return points;
         }
 
         /// <inheritdoc/>
@@ -44,11 +48,10 @@ namespace Wombat.CommGateway.Infrastructure.Repositories
 
 
         /// <inheritdoc/>
-        public async Task<IEnumerable<DevicePoint>> GetDevicePointsAsync(int deviceId)
+        public async Task<IEnumerable<DevicePoint>> GetDevicePointsAsync(int id)
         {
-            var device = await _service.GetService<IDeviceRepository>()
-                .GetByIdAsync(deviceId);
-            return device?.Points ?? new List<DevicePoint>();
+            return await Select.Where(x => x.DeviceId == id).ToListAsync();
+
         }
 
         /// <inheritdoc/>
@@ -58,10 +61,30 @@ namespace Wombat.CommGateway.Infrastructure.Repositories
         }
 
         /// <inheritdoc/>
+        public async Task<IEnumerable<DevicePoint>> GetDevicePointByGrouopAsync(int id)
+        {
+            var deviveIds =await _deviceRepository.Select.Where(x => x.DeviceGroupId == id).ToListAsync();
+            if (deviveIds != null)
+            {
+                List<DevicePoint> devicePoints = new List<DevicePoint>();
+                foreach (var deviveId in deviveIds)
+                {
+                   var points = await Select.Where(x => x.DeviceId == deviveId.Id).ToListAsync();
+                   if (points != null)
+                   {
+                    devicePoints.AddRange(points);
+                   }
+                }
+                return devicePoints;
+            }
+            return null;
+        }
+
+        /// <inheritdoc/>
         public async Task<bool> DeleteDevicePointAsync(int id)
         {
-            await DeleteAsync(x => x.Id == id);
-            return true;
+            var count = await DeleteAsync(x => x.Id == id);
+            return count > 0;
         }
 
         /// <inheritdoc/>
@@ -74,15 +97,17 @@ namespace Wombat.CommGateway.Infrastructure.Repositories
         /// <inheritdoc/>
         public async Task<bool> UpdateDevicePointsAsync(IEnumerable<DevicePoint> devicePoints)
         {
-            await UpdateAsync(devicePoints);
-            return true;
+            var count = await UpdateAsync(devicePoints);
+            return count > 0;
         }
 
         /// <inheritdoc/>
         public async Task<bool> DeleteDevicePointsAsync(IEnumerable<int> ids)
         {
-            await DeleteAsync(x => ids.Contains(x.Id));
-            return true;
+            var count = await DeleteAsync(x => ids.Contains(x.Id));
+            return count > 0;
         }
+
+
     }
 } 

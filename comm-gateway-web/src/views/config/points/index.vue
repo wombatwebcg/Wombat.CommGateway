@@ -855,14 +855,17 @@ const handleSubmit = async () => {
 // 处理导出
 const handleExport = async () => {
   try {
-    await ElMessageBox.confirm('确定要导出点位数据吗？', '提示', {
+    const currentNode = treeManager.getCurrentNode();
+    if (!currentNode) {
+      ElMessage.warning('请先选择一个节点');
+      return;
+    }
+
+    await ElMessageBox.confirm(`确定要导出${currentNode.name}的点位数据吗？`, '导出确认', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'info'
     });
-
-    const currentNode = treeManager.getCurrentNode();
-    if (!currentNode) return;
 
     // 显示加载状态
     loading.value = true;
@@ -914,13 +917,14 @@ const handleExport = async () => {
       XLSX.utils.book_append_sheet(wb, ws, '点位数据');
 
       // 生成文件名
-      const fileName = `点位数据_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const nodeName = currentNode.name.replace(/[\\/:*?"<>|]/g, '_'); // 替换文件名中不允许的字符
+      const fileName = `点位数据_${nodeName}_${new Date().toISOString().split('T')[0]}.xlsx`;
       
       // 使用FileSaver.js方式导出 (XLSX内部方法)
       XLSX.writeFile(wb, fileName);
       
       console.log('导出文件:', fileName);
-      ElMessage.success('导出成功');
+      ElMessage.success(`成功导出${currentNode.name}的${pointsList.length}个点位数据`);
     } catch (error) {
       console.error('导出失败:', error);
       ElMessage.error('导出失败: ' + (error instanceof Error ? error.message : String(error)));

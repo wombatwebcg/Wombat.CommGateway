@@ -59,7 +59,7 @@
               <template #default="{ row }">
                 <span>{{ row.channelName }}</span>
                 <el-tag 
-                  v-if="getChannelRole(row.channelName)" 
+                  v-if="getChannelRole(row.channelName) !== undefined" 
                   :type="getChannelRoleTagType(getChannelRole(row.channelName))" 
                   size="small" 
                   class="ml-2"

@@ -21,7 +21,7 @@ export interface UpdateDeviceGroupRequest {
 // 获取所有设备组
 export function getAllDeviceGroups() {
   return request<DeviceGroupDto[]>({
-    url: '/api/DeviceGroup',
+    url:  `/api/DeviceGroup`,
     method: 'get'
   })
 }
@@ -37,7 +37,7 @@ export function getDeviceGroupById(id: number) {
 // 创建设备组
 export function createDeviceGroup(data: CreateDeviceGroupRequest) {
   return request<DeviceGroupDto>({
-    url: '/api/DeviceGroup',
+    url: `/api/DeviceGroup`,
     method: 'post',
     data
   })

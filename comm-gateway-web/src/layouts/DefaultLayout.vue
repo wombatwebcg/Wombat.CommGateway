@@ -2,7 +2,7 @@
     <!-- 包裹所有内容到一个根元素 -->
   <div class="default-layout-wrapper">
   <el-container class="layout-container">
-    <el-aside :width="isCollapse ? '80px' : '200px'" class="aside">
+    <el-aside :width="isCollapse ? '80px' : '220px'" class="aside">
       <div class="logo">
         <img src="../assets/logo.png" alt="Logo" />
         <span v-show="!isCollapse">工业网关</span>
@@ -12,9 +12,10 @@
         class="menu"
         :router="true"
         :collapse="isCollapse"
-        background-color="#001529"
-        text-color="#FFFFFF"
-        active-text-color="#1890FF"
+        :collapse-transition="true"
+        background-color="transparent"
+        text-color="rgba(255, 255, 255, 0.85)"
+        active-text-color="#ffffff"
       >
         <!-- 注释掉仪表盘菜单
         <el-menu-item index="/dashboard">
@@ -62,8 +63,9 @@
             <Expand v-else />
           </el-icon>
           <el-breadcrumb separator="/">
-            <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
-            <el-breadcrumb-item>{{ route.meta.title }}</el-breadcrumb-item>
+            <el-breadcrumb-item v-for="(item, index) in breadcrumbItems" :key="index" :to="item.path">
+              {{ item.title }}
+            </el-breadcrumb-item>
           </el-breadcrumb>
         </div>
         <div class="header-right">
@@ -110,7 +112,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Search } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
@@ -121,6 +123,42 @@ const route = useRoute()
 const router = useRouter()
 const isCollapse = ref(false)
 const searchText = ref('')
+
+// 动态生成面包屑导航项
+const breadcrumbItems = computed(() => {
+  const items = []
+  
+  // 添加工业网关作为首页
+  items.push({
+    title: '工业网关',
+    path: '/config'
+  })
+  
+  // 处理当前路由
+  if (route.matched.length > 1) {
+    // 获取主菜单项
+    const mainRoute = route.matched[1]
+    if (mainRoute && mainRoute.meta.title) {
+      items.push({
+        title: mainRoute.meta.title as string,
+        path: mainRoute.path
+      })
+    }
+    
+    // 获取子菜单项（如果存在）
+    if (route.matched.length > 2) {
+      const subRoute = route.matched[2]
+      if (subRoute && subRoute.meta.title) {
+        items.push({
+          title: subRoute.meta.title as string,
+          path: subRoute.path
+        })
+      }
+    }
+  }
+  
+  return items
+})
 
 // 用户信息相关
 const showProfile = ref(false)
@@ -169,35 +207,123 @@ const handleUserCommand = (command: string) => {
   overflow: hidden;
   
   .aside {
-    background-color: #001529;
-    transition: width 0.3s;
+    background: linear-gradient(180deg, #2c5282 0%, #1e3a8a 100%);
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
     height: 100%;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
     
     .logo {
-      height: 64px;
+      height: 70px;
       display: flex;
       align-items: center;
       padding: 0 24px;
-      color: #fff;
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.08);
+      margin-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
       
       img {
         width: 32px;
         height: 32px;
         margin-right: 12px;
+        filter: brightness(0) invert(1) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+        transition: filter 0.3s ease;
       }
       
       span {
-        font-size: 20px;
-        font-weight: 600;
+        font-size: 18px;
+        font-weight: 500;
         font-family: 'PingFang SC', 'Helvetica Neue', sans-serif;
+        letter-spacing: 0.5px;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
       }
     }
     
     .menu {
       border-right: none;
       background-color: transparent;
-      height: calc(100% - 64px);
+      height: calc(100% - 78px);
+      
+      :deep(.el-menu-item),
+      :deep(.el-sub-menu__title) {
+        height: 50px;
+        line-height: 50px;
+        margin: 4px 0;
+        border-radius: 4px;
+        margin-right: 12px;
+        margin-left: 12px;
+        padding: 0 16px !important;
+        transition: all 0.3s;
+        
+        &:hover {
+          background-color: rgba(255, 255, 255, 0.1) !important;
+        }
+        
+        .el-icon {
+          font-size: 18px;
+          margin-right: 10px;
+          color: rgba(255, 255, 255, 0.7);
+        }
+      }
+      
+      :deep(.el-menu-item.is-active) {
+        background: linear-gradient(90deg, rgba(66, 153, 225, 0.8), rgba(66, 153, 225, 0.4));
+        box-shadow: 0 2px 8px rgba(66, 153, 225, 0.25);
+        
+        .el-icon {
+          color: #ffffff;
+        }
+      }
+      
+      :deep(.el-sub-menu.is-active) {
+        .el-sub-menu__title {
+          color: #ffffff;
+          
+          .el-icon {
+            color: #ffffff;
+          }
+        }
+      }
+      
+      :deep(.el-sub-menu__title) {
+        &:hover {
+          background-color: rgba(255, 255, 255, 0.1) !important;
+        }
+      }
+      
+      :deep(.el-menu--inline) {
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 4px;
+        margin: 0 12px 8px;
+        padding: 4px 0;
+        
+        .el-menu-item {
+          height: 40px;
+          line-height: 40px;
+          margin: 4px 0;
+          padding-left: 36px !important;
+          
+          &.is-active {
+            background: rgba(66, 153, 225, 0.3);
+            box-shadow: none;
+          }
+        }
+      }
+      
+      // 折叠状态下的样式
+      &.el-menu--collapse {
+        :deep(.el-menu-item),
+        :deep(.el-sub-menu__title) {
+          padding: 0 20px !important;
+          margin: 4px;
+          
+          .el-icon {
+            margin-right: 0;
+            font-size: 20px;
+          }
+        }
+      }
     }
   }
   

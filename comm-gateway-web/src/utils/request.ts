@@ -6,9 +6,10 @@ import router from '@/router'
 
 // 创建axios实例
 const service: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? '',  
   timeout: 15000
 })
+
 
 // 请求拦截器
 service.interceptors.request.use(

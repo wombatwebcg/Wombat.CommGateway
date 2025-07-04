@@ -79,6 +79,14 @@ namespace Wombat.CommGateway.Application.Services
         }
 
         /// <inheritdoc/>
+
+        public async Task<List<DevicePointDto>> GetPointByGroupIdAsync(int id)
+        {
+            var points = await _pointRepository.GetDevicePointByGrouopAsync(id);
+            return points.Select(MapToDto).ToList();
+        }
+
+        /// <inheritdoc/>
         public async Task<int> CreatePointAsync(CreateDevicePointDto dto)
         {
             var point = _mapper.Map<DevicePoint>(dto);           
@@ -195,5 +203,7 @@ namespace Wombat.CommGateway.Application.Services
                 Remark = point.Remark
             };
         }
+
+
     }
 } 

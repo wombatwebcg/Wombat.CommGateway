@@ -114,11 +114,11 @@
             placeholder="请选择协议类型"
             :disabled="dialogType === 'edit'"
           >
-            <el-option label="Modbus TCP" :value="0" />
-            <el-option label="Modbus RTU" :value="1" />
-            <el-option label="Siemens S7" :value="2" />
-            <el-option label="Mitsubishi MC" :value="3" />
-            <el-option label="Omron FINS" :value="4" />
+            <el-option label="Modbus TCP" :value="Number(ProtocolType.ModbusTCP)" />
+            <el-option label="Modbus RTU" :value="Number(ProtocolType.ModbusRTU)" />
+            <el-option label="Siemens S7" :value="Number(ProtocolType.SiemensS7)" />
+            <el-option label="Mitsubishi MC" :value="Number(ProtocolType.MitsubishiMC)" />
+            <el-option label="Omron FINS" :value="Number(ProtocolType.OmronFINS)" />
           </el-select>
         </el-form-item>
 
@@ -461,19 +461,26 @@ const handleAdd = () => {
 const handleEdit = async (row: Channel) => {
   console.log('Editing row:', row)
   console.log('Row configuration (original):', row.configuration)
+  console.log('Row protocol (original):', row.protocol, 'type:', typeof row.protocol)
   
   dialogType.value = 'edit'
   dialogVisible.value = true
+
+  // 明确设置protocol的类型为数字
+  const protocolValue = Number(row.protocol)
+  console.log('Protocol after conversion:', protocolValue, 'type:', typeof protocolValue)
 
   Object.assign(form, {
     id: row.id,
     name: row.name,
     type: row.type,
-    protocol: row.protocol,
+    protocol: protocolValue, // 使用转换后的数字类型
     role: row.role || ChannelRole.Client, // 默认为客户端角色
     enable: row.enable,
     status: row.status
   })
+  
+  console.log('Form after Object.assign - protocol:', form.protocol, 'type:', typeof form.protocol)
 
   // 确保 configuration 是响应式对象
   if (!form.configuration || typeof form.configuration !== 'object') {
@@ -505,7 +512,8 @@ const handleEdit = async (row: Channel) => {
     })
     
     // 如果是西门子S7协议，添加CPU类型
-    if (row.protocol === ProtocolType.SiemensS7) {
+    if (protocolValue === ProtocolType.SiemensS7) {
+      console.log('Setting S7 specific configuration')
       form.configuration.cpuType = configuration.cpuType !== undefined ? configuration.cpuType : 'S7-1200'
       if (!configuration.port || configuration.port === '502') {
         form.configuration.port = '102'
@@ -523,7 +531,19 @@ const handleEdit = async (row: Channel) => {
   if (formRef.value) {
     formRef.value.clearValidate()
   }
+  
+  // 最终检查form.protocol值
   console.log('Final form state:', form)
+  console.log('Final protocol value:', form.protocol, 'type:', typeof form.protocol)
+  console.log('Protocol enum check - SiemensS7:', ProtocolType.SiemensS7, 'type:', typeof ProtocolType.SiemensS7)
+  
+  // 检查表单选项值与枚举值是否匹配
+  console.log('Protocol options in form:')
+  console.log('ModbusTCP:', ProtocolType.ModbusTCP)
+  console.log('ModbusRTU:', ProtocolType.ModbusRTU)
+  console.log('SiemensS7:', ProtocolType.SiemensS7)
+  console.log('MitsubishiMC:', ProtocolType.MitsubishiMC)
+  console.log('OmronFINS:', ProtocolType.OmronFINS)
 }
 
 // 切换通道启用状态
