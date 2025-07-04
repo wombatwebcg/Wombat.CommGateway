@@ -16,6 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Wombat.CommGateway.Infrastructure.Repositories;
 using Wombat.Extensions.DataTypeExtensions;
 using Wombat.CommGateway.Domain.Enums;
+using System.Diagnostics;
 
 
 namespace Wombat.CommGateway.Application.Services
@@ -59,14 +60,15 @@ namespace Wombat.CommGateway.Application.Services
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation("Modbus TCP Background Service starting.");
+            Stopwatch stopwatch = Stopwatch.StartNew();
 
             while (!stoppingToken.IsCancellationRequested)
             {
+                stopwatch.Restart();
                 using (var scope = _serviceScopeFactory.CreateScope())
                 {
                     var channelRepository = scope.ServiceProvider.GetRequiredService<IChannelRepository>();
                     var devicePointRepository = scope.ServiceProvider.GetRequiredService<IDevicePointRepository>();
-                    //var dataPoints = await devicePointRepository.GetAllAsync();
                     var channels = await channelRepository.GetAllAsync();
                     var deviceRepository = scope.ServiceProvider.GetRequiredService<IDeviceRepository>();
                     var devices = await deviceRepository.GetAllAsync();
@@ -122,7 +124,6 @@ namespace Wombat.CommGateway.Application.Services
                                                       .Set(x => x.Value, data)
                                                       .Set(x => x.UpdateTime, DateTime.Now).Set(x => x.Status, DataPointStatus.Good)
                                                       .ExecuteAffrowsAsync();
-
                                                 }
                                             }
                                         }
@@ -168,7 +169,7 @@ namespace Wombat.CommGateway.Application.Services
                         if (!byte.TryParse(rackStr, out byte rack))
                             rack = 0;
                         if (!byte.TryParse(slotStr, out byte slot))
-                            slot = 1;
+                            slot = 0;
 
                         if (!CpuTypeToVersion.TryGetValue(cpuType, out SiemensVersion version))
                             throw new ArgumentException($"未知的cpuType: {cpuType}");

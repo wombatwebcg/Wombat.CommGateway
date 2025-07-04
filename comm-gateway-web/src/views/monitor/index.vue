@@ -410,7 +410,7 @@ onMounted(async () => {
     // 启动定时刷新
     refreshTimer = window.setInterval(() => {
       fetchPoints()
-    }, 5000)
+    }, 3000)
   } catch (error) {
     console.error('初始化失败:', error)
     ElMessage.error('初始化失败')
