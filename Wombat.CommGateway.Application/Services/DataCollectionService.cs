@@ -13,6 +13,9 @@ using Wombat.IndustrialCommunication;
 using Wombat.CommGateway.Application.DTOs;
 using Wombat.CommGateway.Domain.Repositories;
 using Microsoft.Extensions.DependencyInjection;
+using Wombat.CommGateway.Infrastructure.Repositories;
+using Wombat.Extensions.DataTypeExtensions;
+using Wombat.CommGateway.Domain.Enums;
 
 
 namespace Wombat.CommGateway.Application.Services
@@ -24,31 +27,30 @@ namespace Wombat.CommGateway.Application.Services
     [AutoInject(typeof(IDataCollectionService),serviceLifetime:ServiceLifetime.Singleton)]
     public class DataCollectionService : BackgroundService, IDataCollectionService
     {
-        private readonly ILogger<DataCollectionService> _logger;
-        private readonly IDevicePointRepository _devicePointRepository;
-        private readonly IDeviceRepository _deviceRepository;
-        private readonly IDataCollectionRecordService _dataCollectionRecordService;
-        private readonly IChannelRepository _channelRepository;
+        private  ILogger<DataCollectionService> _logger;
+
         private readonly Dictionary<int, bool> _collectionStatus = new();
         private readonly Dictionary<int, string> _collectionErrors = new();
         private CancellationTokenSource _cancellationTokenSource;
         private IServiceScopeFactory _serviceScopeFactory;
+        private static readonly Dictionary<string, SiemensVersion> CpuTypeToVersion = new()
+        {
+            { "S7-200Smart", SiemensVersion.S7_200Smart },
+            { "S7-200", SiemensVersion.S7_200 },
+            { "S7-300", SiemensVersion.S7_300 },
+            { "S7-400", SiemensVersion.S7_400 },
+            { "S7-1200", SiemensVersion.S7_1200 },
+            { "S7-1500", SiemensVersion.S7_1500 }
+        };
         /// <summary>
         /// 构造函数
         /// </summary>
         public DataCollectionService(
             ILogger<DataCollectionService> logger,
-            IDevicePointRepository devicePointRepository,
-            IDataCollectionRecordService dataCollectionRecordService,
-            IDeviceRepository deviceRepository,
-            IServiceScopeFactory serviceScopeFactory,
-            IChannelRepository channelRepository)
+            IServiceScopeFactory serviceScopeFactory
+)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _devicePointRepository = devicePointRepository ?? throw new ArgumentNullException(nameof(devicePointRepository));
-            _dataCollectionRecordService = dataCollectionRecordService ?? throw new ArgumentNullException(nameof(dataCollectionRecordService));
-            _channelRepository = channelRepository ?? throw new ArgumentNullException(nameof(channelRepository));
-            _deviceRepository = deviceRepository ?? throw new ArgumentNullException(nameof(deviceRepository));
             _serviceScopeFactory = serviceScopeFactory ?? throw new ArgumentNullException(nameof(serviceScopeFactory));
         }
 
@@ -62,32 +64,140 @@ namespace Wombat.CommGateway.Application.Services
             {
                 using (var scope = _serviceScopeFactory.CreateScope())
                 {
-                    var channels = await _channelRepository.GetAllAsync();
-                    var devices = await _deviceRepository.GetAllAsync();
-                    var dataPoints = await _devicePointRepository.GetAllAsync();
+                    var channelRepository = scope.ServiceProvider.GetRequiredService<IChannelRepository>();
+                    var devicePointRepository = scope.ServiceProvider.GetRequiredService<IDevicePointRepository>();
+                    //var dataPoints = await devicePointRepository.GetAllAsync();
+                    var channels = await channelRepository.GetAllAsync();
+                    var deviceRepository = scope.ServiceProvider.GetRequiredService<IDeviceRepository>();
+                    var devices = await deviceRepository.GetAllAsync();
+                    List<Task> tasks = new List<Task>();
                     foreach (var channel in channels)
                     {
                         if (channel.Enable)
                         {
+                            Task task = Task.Run(async () =>
+                            {
+                                var client = CreatClientByChannel(channel);
+                                await client.ConnectAsync();
+                                if (client.Connected)
+                                {
+                                    Dictionary<string, DataTypeEnums> addresses = new Dictionary<string, DataTypeEnums>();
+                                    Dictionary<int, string> values = new Dictionary<int, string>();
+                                    Dictionary<int, string> valueAddresss = new Dictionary<int, string>();
 
+                                    foreach (var device in devices)
+                                    {
+                                        if (device.Enable && device.ChannelId == channel.Id)
+                                        {
+                                            foreach (var point in device.Points)
+                                            {
+                                                if (point.Enable)
+                                                {
+                                                    var address = point.Address.ToUpper();
+                                                    if (!addresses.ContainsKey(address))
+                                                    {
+                                                        addresses.Add(address, ToDataTypeEnums(point.DataType));
+                                                    }
+                                                    values.Add(point.Id, "");
+                                                    valueAddresss.Add(point.Id, address);
+                                                }
+                                            }
+
+                                            var result = await client.BatchReadAsync(addresses);
+                                            if (result.IsSuccess)
+                                            {
+                                                foreach (var (id, addr) in valueAddresss)
+                                                {
+                                                    if (result.ResultValue.TryGetValue(addr, out var tuple))
+                                                    {
+                                                        var (dataType, rawValue) = tuple;
+                                                        values[id] = rawValue?.ToString() ?? string.Empty;
+                                                    }
+                                                }
+
+                                                foreach (var (id, data) in values)
+                                                {
+
+                                                    await devicePointRepository.Select.Where(x => x.Id == id).ToUpdate()
+                                                      .Set(x => x.Value, data)
+                                                      .Set(x => x.UpdateTime, DateTime.Now).Set(x => x.Status, DataPointStatus.Good)
+                                                      .ExecuteAffrowsAsync();
+
+                                                }
+                                            }
+                                        }
+                                    }
+                                    await client.DisconnectAsync();
+                                }
+                            });
+                            tasks.Add(task);
                         }
 
                     }
+                    await Task.WhenAll(tasks);
                 }
+                await Task.Delay(10000);
             }
 
         }
 
 
 
-        //public IDeviceClient CreatClientByChannel(ChannelDto channelDto)
-        //{
-        //    switch (channel.)
-        //    {
-        //        default:
-        //            break;
-        //    }
-        //}
+        public IDeviceClient CreatClientByChannel(Channel channel)
+        {
+            if (channel == null || channel.Configuration == null)
+                return null;
+
+            try
+            {
+                switch (channel.Protocol)
+                {
+                    case ProtocolType.SiemensS7:
+                        // 提取参数
+                        var ip = channel.Configuration.ContainsKey("ipAddress") ? channel.Configuration["ipAddress"] : null;
+                        var portStr = channel.Configuration.ContainsKey("port") ? channel.Configuration["port"] : "102";
+                        var cpuType = channel.Configuration.ContainsKey("cpuType") ? channel.Configuration["cpuType"] : "S7-1200";
+                        var rackStr = channel.Configuration.ContainsKey("rack") ? channel.Configuration["rack"] : "0";
+                        var slotStr = channel.Configuration.ContainsKey("slot") ? channel.Configuration["slot"] : "0";
+
+                        if (string.IsNullOrWhiteSpace(ip))
+                            throw new ArgumentException("SiemensS7配置缺少ipAddress参数");
+
+                        if (!int.TryParse(portStr, out int port))
+                            port = 102;
+                        if (!byte.TryParse(rackStr, out byte rack))
+                            rack = 0;
+                        if (!byte.TryParse(slotStr, out byte slot))
+                            slot = 1;
+
+                        if (!CpuTypeToVersion.TryGetValue(cpuType, out SiemensVersion version))
+                            throw new ArgumentException($"未知的cpuType: {cpuType}");
+
+                        // 实例化SiemensClient
+                        return new SiemensClient(ip, port, version, rack, slot);
+
+                    case ProtocolType.ModbusTCP:
+                        // 提取参数
+                        var modbusIp = channel.Configuration.ContainsKey("ipAddress") ? channel.Configuration["ipAddress"] : null;
+                        var modbusPortStr = channel.Configuration.ContainsKey("port") ? channel.Configuration["port"] : "502";
+                        if (string.IsNullOrWhiteSpace(modbusIp))
+                            throw new ArgumentException("ModbusTCP配置缺少ipAddress参数");
+                        if (!int.TryParse(modbusPortStr, out int modbusPort))
+                            modbusPort = 502;
+                        // 实例化ModbusTcpClient
+                        return new ModbusTcpClient(modbusIp, modbusPort);
+
+                    default:
+                        // 其他协议暂未实现
+                        return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, $"CreatClientByChannel参数解析或实例化失败，协议: {channel.Protocol}");
+                return null;
+            }
+        }
 
         /// <inheritdoc/>
         public async Task StartCollectionAsync(int deviceId)
@@ -142,7 +252,8 @@ namespace Wombat.CommGateway.Application.Services
         {
             try
             {
-                return await _dataCollectionRecordService.GetCollectionDataAsync(deviceId, startTime, endTime);
+                //return await _dataCollectionRecordService.GetCollectionDataAsync(deviceId, startTime, endTime);
+                return null;
             }
             catch (Exception ex)
             {
@@ -207,6 +318,23 @@ namespace Wombat.CommGateway.Application.Services
             return Task.FromResult(_collectionErrors.TryGetValue(deviceId, out var error) ? error : null);
         }
 
+        public  DataTypeEnums ToDataTypeEnums(DataType dataType)
+        {
+            // 使用 Enum.TryParse 保证安全转换
+            if (Enum.TryParse<DataTypeEnums>(dataType.ToString(), out var result))
+            {
+                return result;
+            }
+            return DataTypeEnums.None;
+        }
 
+        public  DataType ToDataType(DataTypeEnums dataTypeEnum)
+        {
+            if (Enum.TryParse<DataType>(dataTypeEnum.ToString(), out var result))
+            {
+                return result;
+            }
+            return DataType.None;
+        }
     }
 } 

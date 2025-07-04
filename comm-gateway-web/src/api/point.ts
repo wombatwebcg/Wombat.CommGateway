@@ -12,8 +12,10 @@ export interface Point {
   scanRate: number
   enable: boolean
   createTime: string
+  updateTime: string
   status: DataPointStatus
   remark?: string
+  value?: string
 }
 
 export interface CreateDevicePointDto {

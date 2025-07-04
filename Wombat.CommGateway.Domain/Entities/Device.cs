@@ -29,18 +29,16 @@ namespace Wombat.CommGateway.Domain.Entities
         [Navigate(nameof(DeviceGroupId))]
         public DeviceGroup DeviceGroup { get; set; }
 
-
-        [Navigate(nameof(DeviceGroup.Id))]
         public int DeviceGroupId { get; set; }
 
 
         [Navigate(nameof(ChannelId))]
         public Channel Channel { get; set; }
 
-        [Navigate(nameof(Channel.Id))]
         public int ChannelId { get; set; }
 
         [Navigate(nameof(DevicePoint.DeviceId))]
+
         public List<DevicePoint>? Points { get; set; }
 
         public DateTime CreateTime { get; set; }

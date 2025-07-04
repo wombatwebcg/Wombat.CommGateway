@@ -220,6 +220,24 @@
                 <el-option label="S7-1500" value="S7-1500" />
               </el-select>
             </el-form-item>
+            <el-form-item label="Rack" prop="configuration.rack">
+              <el-input-number
+                v-model="form.configuration.rack"
+                :min="0"
+                :max="255"
+                :controls="false"
+                placeholder="请输入Rack (默认0)"
+              />
+            </el-form-item>
+            <el-form-item label="Slot" prop="configuration.slot">
+              <el-input-number
+                v-model="form.configuration.slot"
+                :min="0"
+                :max="255"
+                :controls="false"
+                placeholder="请输入Slot (默认0)"
+              />
+            </el-form-item>
           </template>
         </template>
       </el-form>
@@ -264,7 +282,11 @@ const form = reactive<CreateChannelDto & {
   configuration: {
     ipAddress: '',
     port: '502',
-    connectionType: 'TCP'
+    connectionType: 'TCP',
+    // S7协议默认配置
+    cpuType: 'S7-1200',
+    rack: '0',
+    slot: '0'
   },
   status: 1,
   role: ChannelRole.Client
@@ -450,7 +472,11 @@ const handleAdd = () => {
     configuration: {
       ipAddress: '',
       port: '502',
-      connectionType: 'TCP'
+      connectionType: 'TCP',
+      // S7协议默认配置
+      cpuType: 'S7-1200',
+      rack: '0',
+      slot: '0'
     },
     status: 1,
     role: ChannelRole.Client
@@ -511,17 +537,24 @@ const handleEdit = async (row: Channel) => {
       connectionType: configuration.connectionType !== undefined ? configuration.connectionType : 'TCP'
     })
     
-    // 如果是西门子S7协议，添加CPU类型
+    // 如果是西门子S7协议，添加CPU类型和rack/slot
     if (protocolValue === ProtocolType.SiemensS7) {
-      console.log('Setting S7 specific configuration')
       form.configuration.cpuType = configuration.cpuType !== undefined ? configuration.cpuType : 'S7-1200'
+      form.configuration.rack = configuration.rack !== undefined ? configuration.rack : '0'
+      form.configuration.slot = configuration.slot !== undefined ? configuration.slot : '0'
       if (!configuration.port || configuration.port === '502') {
         form.configuration.port = '102'
       }
     } else {
-      // 非西门子协议时移除cpuType
+      // 非西门子协议时移除cpuType、rack、slot
       if ('cpuType' in form.configuration) {
         delete form.configuration.cpuType
+      }
+      if ('rack' in form.configuration) {
+        delete form.configuration.rack
+      }
+      if ('slot' in form.configuration) {
+        delete form.configuration.slot
       }
     }
   }

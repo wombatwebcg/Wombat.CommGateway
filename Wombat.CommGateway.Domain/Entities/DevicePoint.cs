@@ -32,7 +32,6 @@ namespace Wombat.CommGateway.Domain.Entities
         public DateTime UpdateTime { get; set; }
 
 
-        [Navigate(nameof(Device.Id))]
         public int DeviceId { get; set; }
 
 

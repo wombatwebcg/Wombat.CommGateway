@@ -72,11 +72,7 @@ namespace Wombat.CommGateway.Domain.Entities
         /// </summary>
         public DateTime UpdateTime { get; set; }
 
-        /// <summary>
-        /// 通道下的设备集合
-        /// </summary>
-        [Navigate(nameof(Device.Id))]
-        public List<Device> Devices { get; set; }
+
 
         private Channel() { }
 
@@ -92,7 +88,6 @@ namespace Wombat.CommGateway.Domain.Entities
             Configuration = new Dictionary<string, string>();
             CreateTime = DateTime.Now;
             UpdateTime = DateTime.Now;
-            Devices = new List<Device>();
         }
 
         public void UpdateStatus(ChannelStatus status)

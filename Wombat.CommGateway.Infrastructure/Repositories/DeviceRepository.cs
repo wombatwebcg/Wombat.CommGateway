@@ -27,6 +27,7 @@ namespace Wombat.CommGateway.Infrastructure.Repositories
         {
             return await Select
                 .Include(d => d.Channel)
+                .IncludeMany(d => d.Points)
                 .Include(d => d.DeviceGroup).ToListAsync();
 
         }
@@ -37,6 +38,7 @@ namespace Wombat.CommGateway.Infrastructure.Repositories
             return await Select
                 .Include(d => d.Channel)
                 .Include(d => d.DeviceGroup)
+                .IncludeMany(d => d.Points)
                 .Where(d => d.Id == id)
                 .FirstAsync();
         }
@@ -51,6 +53,7 @@ namespace Wombat.CommGateway.Infrastructure.Repositories
             return await Select
                 .Include(d => d.Channel)
                 .Include(d => d.DeviceGroup)
+                .IncludeMany(d => d.Points)
                 .Where(d => d.Name == name)
                 .FirstAsync();
         }
