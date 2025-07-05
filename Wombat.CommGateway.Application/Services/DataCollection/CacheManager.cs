@@ -8,6 +8,7 @@ using Wombat.CommGateway.Domain.Entities;
 using Wombat.CommGateway.Domain.Enums;
 using Wombat.Extensions.AutoGenerator.Attributes;
 using Microsoft.Extensions.DependencyInjection;
+using Wombat.CommGateway.Application.Interfaces;
 
 namespace Wombat.CommGateway.Application.Services.DataCollection
 {
@@ -19,6 +20,7 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
     public class CacheManager
     {
         private readonly ILogger<CacheManager> _logger;
+        private readonly ICacheUpdateNotificationService _notificationService;
         private readonly ConcurrentDictionary<int, CachedPoint> _pointCache;
         private readonly Timer _flushTimer;
         private readonly int _flushIntervalMs;
@@ -27,9 +29,10 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
         private readonly ConcurrentQueue<int> _dirtyPoints;
         private volatile bool _isRunning;
 
-        public CacheManager(ILogger<CacheManager> logger)
+        public CacheManager(ILogger<CacheManager> logger, ICacheUpdateNotificationService notificationService)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
             _pointCache = new ConcurrentDictionary<int, CachedPoint>();
             _dirtyPoints = new ConcurrentQueue<int>();
             _flushIntervalMs = 5000; // 5秒刷新一次
@@ -98,6 +101,19 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
 
                 // 添加到脏数据队列
                 _dirtyPoints.Enqueue(pointId);
+
+                // 通知WebSocket服务推送数据更新
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _notificationService.OnPointDataUpdatedAsync(pointId, value, status, now);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"通知点位 {pointId} 数据更新时发生错误");
+                    }
+                });
             }
         }
 
@@ -138,6 +154,24 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
                     _dirtyPoints.Enqueue(pointId);
                 }
             }
+
+            // 批量通知WebSocket服务推送数据更新
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var batchUpdates = new Dictionary<int, (string Value, DataPointStatus Status, DateTime UpdateTime)>();
+                    foreach (var kvp in updates)
+                    {
+                        batchUpdates[kvp.Key] = (kvp.Value.Value, kvp.Value.Status, now);
+                    }
+                    await _notificationService.OnBatchPointsDataUpdatedAsync(batchUpdates);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"批量通知点位数据更新时发生错误");
+                }
+            });
         }
 
         /// <summary>

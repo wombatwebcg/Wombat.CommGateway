@@ -89,7 +89,7 @@ namespace Wombat.CommGateway.Application.Services
         {
             var device = new Device(dto.Name, dto.DeviceGroupId,dto.ChannelId);
             device = _mapper.Map<Device>(dto);
-            device.Enable = dto.Enable;
+            device.Enable = true;
             await _deviceRepository.InsertAsync(device);
             return device.Id;
         }

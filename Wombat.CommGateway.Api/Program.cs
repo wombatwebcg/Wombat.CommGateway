@@ -20,6 +20,9 @@ using Microsoft.Extensions.Hosting;
 using Wombat.CommGateway.Application.Services;
 using Wombat.CommGateway.Infrastructure.Communication;
 using NPOI.XWPF.UserModel;
+using Microsoft.AspNetCore.SignalR;
+using Wombat.CommGateway.Application.Interfaces;
+using Wombat.CommGateway.Application.Hubs;
 
 namespace Wombat.CommGateway.API
 {
@@ -123,6 +126,22 @@ namespace Wombat.CommGateway.API
             //builder.Services.AddScoped<Wombat.CommGateway.API.RequestBody>();
             builder.Services.AddHostedService<DataCollectionService>();
 
+            // 注册SignalR服务
+            builder.Services.AddSignalR();
+            // 注册DataCollectionHubService为ICacheUpdateNotificationService实现
+            builder.Services.AddSingleton<ICacheUpdateNotificationService, Wombat.CommGateway.Application.Services.DataCollectionHubService>();
+
+            // 添加SignalR的CORS策略
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("SignalRPolicy", policy =>
+                {
+                    policy.SetIsOriginAllowed(origin => true)
+                          .AllowAnyHeader()
+                          .AllowAnyMethod()
+                          .AllowCredentials();
+                });
+            });
 
             var app = builder.Build();
 
@@ -138,22 +157,21 @@ namespace Wombat.CommGateway.API
 
             }
 
-            app.UseCors(x =>
-            {
-                x.AllowAnyOrigin()
-                .AllowAnyHeader()
-                .AllowAnyMethod()
-                .DisallowCredentials();
+            //app.UseCors(x =>
+            //{
+            //    x.AllowAnyOrigin()
+            //    .AllowAnyHeader()
+            //    .AllowAnyMethod()
+            //    .DisallowCredentials();
 
-            }).UseForwardedHeaders(new ForwardedHeadersOptions
-            {
-                ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
-            });
+            //}).UseForwardedHeaders(new ForwardedHeadersOptions
+            //{
+            //    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+            //});
 
             app.UseMiddleware<RequestBodyMiddleware>();
             app.UseMiddleware<RequestLogMiddleware>();
-            app.UseDeveloperExceptionPage()
-                .UseStaticFiles(new StaticFileOptions
+            app.UseStaticFiles(new StaticFileOptions
                 {
                     ServeUnknownFileTypes = true,
                     DefaultContentType = "application/octet-stream"
@@ -161,6 +179,7 @@ namespace Wombat.CommGateway.API
                 .UseRouting();
 
 
+            app.UseCors("SignalRPolicy");
 
             app.UseHttpsRedirection();
 
@@ -171,6 +190,10 @@ namespace Wombat.CommGateway.API
             app.UseStaticFiles();
 
             app.MapControllers();
+
+            // 注册SignalR Hub路由，使用特定的CORS策略
+            app.MapHub<DataCollectionHub>("/ws/datacollection")
+               .RequireCors("SignalRPolicy");
 
 
             #region Swagger

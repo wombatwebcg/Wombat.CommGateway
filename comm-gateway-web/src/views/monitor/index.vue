@@ -2,6 +2,18 @@
   <div class="point-management">
     <div class="page-header">
       <h2>点位监视</h2>
+      <div class="header-info">
+        <!-- 连接状态显示 -->
+        <div class="connection-status">
+          <el-tag 
+            :type="connectionStatus === 'Connected' ? 'success' : 'danger'"
+            size="small"
+          >
+            <el-icon><Monitor /></el-icon>
+            {{ connectionStatus === 'Connected' ? '实时连接' : '连接断开' }}
+          </el-tag>
+        </div>
+      </div>
     </div>
 
     <div class="main-content">
@@ -42,7 +54,7 @@
       <div class="point-list">
         <el-card>
           <div class="table-container">
-            <el-table :data="points" v-loading="loading" border>
+            <el-table :data="paginatedPoints" v-loading="loading" border>
               <el-table-column prop="name" label="点位名称" min-width="120" />
               <el-table-column prop="deviceName" label="所属设备" min-width="120" />
               <el-table-column prop="address" label="地址" min-width="120" />
@@ -51,7 +63,11 @@
                   <el-tag>{{ dataTypeMap[row.dataType as DataType] || '未知' }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="updateTime" label="更新时间" width="180" />
+              <el-table-column prop="updateTime" label="更新时间" width="180">
+                <template #default="{ row }">
+                  {{ formatUpdateTime(row.updateTime) }}
+                </template>
+              </el-table-column>
               <el-table-column prop="value" label="当前值" min-width="120" />
               <el-table-column prop="status" label="状态" width="100">
                 <template #default="{ row }">
@@ -80,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { Plus, Monitor, Folder, Download, Upload, Delete, UploadFilled } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, UploadFile } from 'element-plus'
@@ -92,6 +108,7 @@ import type { Point, PointQuery } from '@/api/point'
 import { CreateDevicePointDto, DataType, ReadWriteType, DataPointStatus } from '@/api/point'
 import type { Device } from '@/api/device'
 import type { DeviceGroupDto } from '@/api/deviceGroup'
+import { dataCollectionSignalR } from '@/utils/signalr-datacollection'
 
 // API 响应类型定义
 interface PaginatedResponse<T> {
@@ -108,6 +125,30 @@ function ensurePointArray(data: Point[] | any): Point[] {
     return data;
   }
   return [];
+}
+
+// 格式化时间显示，最多显示到毫秒级别
+function formatUpdateTime(timeString: string): string {
+  if (!timeString) return '';
+  
+  try {
+    const date = new Date(timeString);
+    if (isNaN(date.getTime())) return timeString;
+    
+    // 格式化为 YYYY-MM-DD HH:mm:ss.SSS
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+  } catch (error) {
+    console.error('时间格式化失败:', error, timeString);
+    return timeString;
+  }
 }
 
 // 映射点位数据，处理后端API返回的不完整数据
@@ -364,6 +405,9 @@ const defaultProps = {
 }
 const selectedNodeUniqueId = ref<string>('')
 
+// 当前订阅的节点信息
+const currentSubscription = ref<{ type: 'device' | 'group' | 'point', id: number } | null>(null)
+
 // 处理树控件自身的节点点击
 const handleTreeNodeClick = (data: TreeNode, node: any) => {
   // 只处理展开/折叠逻辑，不进行选中
@@ -372,30 +416,39 @@ const handleTreeNodeClick = (data: TreeNode, node: any) => {
 
 // 处理自定义节点点击
 const handleNodeClick = async (data: TreeNode) => {
-  if (!data) return;
+  if (!data) return
   
-  // 使用唯一ID设置选中状态
-  selectedNodeUniqueId.value = data.uniqueId || '';
-  console.log('Custom node clicked:', data.id, data.nodeType, data.name, data.uniqueId);
+  selectedNodeUniqueId.value = data.uniqueId || ''
+  console.log('Custom node clicked:', data.id, data.nodeType, data.name, data.uniqueId)
   
-  loading.value = true;
+  loading.value = true
   try {
-    const nodePoints = await treeManager.setCurrentNode(data);
+    const nodePoints = await treeManager.setCurrentNode(data)
     if (nodePoints) {
-      points.value = nodePoints.map((point: any) => mapPointData(point, treeManager.getDevice.bind(treeManager)));
-      total.value = nodePoints.length;
+      points.value = nodePoints.map((point: any) => mapPointData(point, treeManager.getDevice.bind(treeManager)))
+      total.value = nodePoints.length
     }
+    
+    // 订阅新节点
+    await subscribeToCurrentNode()
   } catch (error) {
-    console.error('获取点位数据失败:', error);
-    ElMessage.error('获取点位数据失败');
+    console.error('获取点位数据失败:', error)
+    ElMessage.error('获取点位数据失败')
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
+
+// 连接状态
+const connectionStatus = ref('Disconnected')
+
+// 监听连接状态变化
+const updateConnectionStatus = () => {
+  const state = dataCollectionSignalR.getConnectionState()
+  connectionStatus.value = state || 'Disconnected'
+}
 
 // 初始化
-let refreshTimer: number | null = null
-
 onMounted(async () => {
   loading.value = true
   try {
@@ -407,10 +460,28 @@ onMounted(async () => {
       points.value = treeData.points.map((point: any) => mapPointData(point, treeManager.getDevice.bind(treeManager)))
       total.value = treeData.points.length
     }
-    // 启动定时刷新
-    refreshTimer = window.setInterval(() => {
-      fetchPoints()
-    }, 3000)
+    
+    // 建立SignalR连接
+    await dataCollectionSignalR.connect()
+    console.log('SignalR连接已建立')
+    
+    // 设置消息处理器
+    dataCollectionSignalR.onPointUpdate(handlePointUpdate)
+    dataCollectionSignalR.onBatchPointsUpdate(handleBatchPointsUpdate)
+    
+    // 订阅当前节点
+    await subscribeToCurrentNode()
+    
+    // 监听连接状态
+    updateConnectionStatus()
+    // 可以添加定时器定期检查状态
+    const statusTimer = setInterval(updateConnectionStatus, 5000)
+    
+    // 在onUnmounted中清理
+    onUnmounted(() => {
+      clearInterval(statusTimer)
+      // ... existing cleanup code ...
+    })
   } catch (error) {
     console.error('初始化失败:', error)
     ElMessage.error('初始化失败')
@@ -419,10 +490,34 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(() => {
-  if (refreshTimer) {
-    clearInterval(refreshTimer)
-    refreshTimer = null
+onUnmounted(async () => {
+  console.log('页面卸载，清理资源')
+  
+  // 取消当前订阅
+  if (currentSubscription.value) {
+    try {
+      switch (currentSubscription.value.type) {
+        case 'device':
+          await dataCollectionSignalR.unsubscribeDevice(currentSubscription.value.id)
+          break
+        case 'group':
+          await dataCollectionSignalR.unsubscribeGroup(currentSubscription.value.id)
+          break
+        case 'point':
+          await dataCollectionSignalR.unsubscribePoint(currentSubscription.value.id)
+          break
+      }
+    } catch (error) {
+      console.error('取消订阅失败:', error)
+    }
+  }
+  
+  // 断开SignalR连接
+  try {
+    await dataCollectionSignalR.disconnect()
+    console.log('SignalR连接已断开')
+  } catch (error) {
+    console.error('断开SignalR连接失败:', error)
   }
 })
 
@@ -444,42 +539,6 @@ const fetchDevices = async () => {
   }
 }
 
-// 获取点位列表
-const fetchPoints = async () => {
-  loading.value = true;
-  try {
-    const currentNode = treeManager.getCurrentNode();
-    if (!currentNode) return;
-
-    let res: PointsResponse;
-    if (currentNode.id === 0) {
-      // 根节点 - 获取所有点位
-      res = await getAllPoints() as PointsResponse;
-    } else if (currentNode.nodeType === 'device') {
-      // 设备节点 - 获取设备点位（直接传递设备ID）
-      res = await getDevicePoints(currentNode.id) as PointsResponse;
-    } else {
-      // 设备组节点 - 获取设备组点位
-      res = await getDeviceGroupPoints(currentNode.id) as PointsResponse;
-    }
-
-    // 处理返回的数据，添加设备名称
-    const items = Array.isArray(res) ? res : (res.items || []);
-    
-    // 数据映射，处理后端API返回的不完整数据
-    points.value = items.map((point: any) => {
-      return mapPointData(point, treeManager.getDevice.bind(treeManager))
-    });
-    
-    total.value = Array.isArray(res) ? res.length : (res.total || 0);
-  } catch (error) {
-    console.error('获取点位列表失败:', error);
-    ElMessage.error('获取点位列表失败');
-  } finally {
-    loading.value = false;
-  }
-};
-
 // 设备组选项
 const deviceGroupsOptions = ref<{id: number, name: string}[]>([])
 
@@ -500,13 +559,309 @@ const initDeviceGroupOptions = async () => {
 // 处理分页
 const handleSizeChange = (val: number) => {
   query.pageSize = val
-  fetchPoints()
+  query.page = 1 // 重置到第一页
 }
 
 const handleCurrentChange = (val: number) => {
   query.page = val
-  fetchPoints()
 }
+
+// 订阅当前选中节点
+const subscribeToCurrentNode = async () => {
+  const currentNode = treeManager.getCurrentNode()
+  if (!currentNode) return
+  
+  console.log('准备订阅节点:', currentNode.nodeType, currentNode.id)
+  
+  // 取消之前的订阅
+  if (currentSubscription.value) {
+    try {
+      console.log('取消之前的订阅:', currentSubscription.value)
+      switch (currentSubscription.value.type) {
+        case 'device':
+          await dataCollectionSignalR.unsubscribeDevice(currentSubscription.value.id)
+          break
+        case 'group':
+          await dataCollectionSignalR.unsubscribeGroup(currentSubscription.value.id)
+          break
+        case 'point':
+          await dataCollectionSignalR.unsubscribePoint(currentSubscription.value.id)
+          break
+      }
+    } catch (error) {
+      console.error('取消订阅失败:', error)
+    }
+  }
+  
+  // 订阅新节点
+  try {
+    switch (currentNode.nodeType) {
+      case 'device':
+        await dataCollectionSignalR.subscribeDevice(currentNode.id)
+        currentSubscription.value = { type: 'device', id: currentNode.id }
+        console.log('已订阅设备:', currentNode.id)
+        break
+      case 'group':
+        await dataCollectionSignalR.subscribeGroup(currentNode.id)
+        currentSubscription.value = { type: 'group', id: currentNode.id }
+        console.log('已订阅设备组:', currentNode.id)
+        break
+      case 'root':
+        // 根节点不订阅，接收所有推送
+        currentSubscription.value = null
+        console.log('根节点，不进行特定订阅')
+        break
+    }
+  } catch (error) {
+    console.error('订阅失败:', error)
+    ElMessage.error('订阅失败，请检查网络连接')
+  }
+}
+
+// 处理单个点位更新
+const handlePointUpdate = (data: any) => {
+  console.log('🔄 Processing single point update:', {
+    timestamp: new Date().toISOString(),
+    receivedData: data,
+    pointId: data?.pointId,
+    value: data?.value,
+    status: data?.status,
+    updateTime: data?.updateTime
+  })
+  
+  const pointIndex = points.value.findIndex(p => p.id === data.pointId)
+  console.log('📍 Point found in list:', {
+    pointId: data?.pointId,
+    found: pointIndex !== -1,
+    index: pointIndex,
+    totalPoints: points.value.length
+  })
+  
+  if (pointIndex !== -1) {
+    // 处理状态值，确保是数字类型
+    let statusValue = data.status
+    if (typeof statusValue === 'string') {
+      // 如果是字符串，尝试转换为数字
+      if (statusValue === 'Good' || statusValue === '1') {
+        statusValue = DataPointStatus.Good
+      } else if (statusValue === 'Bad' || statusValue === '2') {
+        statusValue = DataPointStatus.Bad
+      } else {
+        statusValue = DataPointStatus.Unknown
+      }
+    } else if (typeof statusValue === 'number') {
+      // 如果是数字，验证是否在有效范围内
+      if (statusValue < 0 || statusValue > 2) {
+        statusValue = DataPointStatus.Unknown
+      }
+    } else {
+      statusValue = DataPointStatus.Unknown
+    }
+    
+    // 使用Vue的响应式更新
+    const originalPoint = points.value[pointIndex]
+    const updatedPoint = {
+      ...originalPoint,
+      value: data.value,
+      status: statusValue,
+      updateTime: data.updateTime
+    }
+    
+    console.log('📝 Updating point:', {
+      pointId: data.pointId,
+      originalValue: originalPoint.value,
+      newValue: data.value,
+      originalStatus: originalPoint.status,
+      newStatus: statusValue,
+      statusType: typeof statusValue
+    })
+    
+    points.value.splice(pointIndex, 1, updatedPoint)
+    console.log('✅ Point updated successfully')
+  } else {
+    console.log('⚠️ Point not found in current list:', data.pointId)
+  }
+}
+
+// 处理批量点位更新
+const handleBatchPointsUpdate = (updates: any[]) => {
+  console.log('🔄 Processing batch points update:', {
+    timestamp: new Date().toISOString(),
+    updatesCount: updates.length,
+    updates: updates
+  })
+  
+  let updatedCount = 0
+  let notFoundCount = 0
+  
+  updates.forEach((update, index) => {
+    console.log(`📦 Processing update ${index + 1}/${updates.length}:`, {
+      pointId: update?.pointId,
+      value: update?.value,
+      status: update?.status,
+      updateTime: update?.updateTime
+    })
+    
+    const pointIndex = points.value.findIndex(p => p.id === update.pointId)
+    if (pointIndex !== -1) {
+      // 处理状态值，确保是数字类型
+      let statusValue = update.status
+      if (typeof statusValue === 'string') {
+        // 如果是字符串，尝试转换为数字
+        if (statusValue === 'Good' || statusValue === '1') {
+          statusValue = DataPointStatus.Good
+        } else if (statusValue === 'Bad' || statusValue === '2') {
+          statusValue = DataPointStatus.Bad
+        } else {
+          statusValue = DataPointStatus.Unknown
+        }
+      } else if (typeof statusValue === 'number') {
+        // 如果是数字，验证是否在有效范围内
+        if (statusValue < 0 || statusValue > 2) {
+          statusValue = DataPointStatus.Unknown
+        }
+      } else {
+        statusValue = DataPointStatus.Unknown
+      }
+      
+      const originalPoint = points.value[pointIndex]
+      const updatedPoint = {
+        ...originalPoint,
+        value: update.value,
+        status: statusValue,
+        updateTime: update.updateTime
+      }
+      
+      console.log(`📝 Updating point ${update.pointId}:`, {
+        originalValue: originalPoint.value,
+        newValue: update.value,
+        originalStatus: originalPoint.status,
+        newStatus: statusValue,
+        statusType: typeof statusValue
+      })
+      
+      points.value.splice(pointIndex, 1, updatedPoint)
+      updatedCount++
+    } else {
+      console.log(`⚠️ Point ${update.pointId} not found in current list`)
+      notFoundCount++
+    }
+  })
+  
+  console.log('✅ Batch update completed:', {
+    totalUpdates: updates.length,
+    updatedCount: updatedCount,
+    notFoundCount: notFoundCount
+  })
+}
+
+// 处理点位状态变更
+const handlePointStatusChange = (data: any) => {
+  console.log('🔄 Processing point status change:', {
+    timestamp: new Date().toISOString(),
+    receivedData: data,
+    pointId: data?.pointId,
+    newStatus: data?.status,
+    updateTime: data?.updateTime
+  })
+  
+  const pointIndex = points.value.findIndex(p => p.id === data.pointId)
+  if (pointIndex !== -1) {
+    const originalPoint = points.value[pointIndex]
+    const updatedPoint = {
+      ...originalPoint,
+      status: data.status,
+      updateTime: data.updateTime
+    }
+    
+    console.log('📝 Updating point status:', {
+      pointId: data.pointId,
+      originalStatus: originalPoint.status,
+      newStatus: data.status
+    })
+    
+    points.value.splice(pointIndex, 1, updatedPoint)
+    console.log('✅ Point status updated successfully')
+  } else {
+    console.log('⚠️ Point not found for status change:', data.pointId)
+  }
+}
+
+// 处理点位移除
+const handlePointRemoved = (data: any) => {
+  console.log('🔄 Processing point removed:', {
+    timestamp: new Date().toISOString(),
+    receivedData: data,
+    pointId: data?.pointId,
+    updateTime: data?.updateTime
+  })
+  
+  const pointIndex = points.value.findIndex(p => p.id === data.pointId)
+  if (pointIndex !== -1) {
+    const removedPoint = points.value[pointIndex]
+    console.log('🗑️ Removing point:', {
+      pointId: data.pointId,
+      pointName: removedPoint.name,
+      pointValue: removedPoint.value
+    })
+    
+    points.value.splice(pointIndex, 1)
+    total.value--
+    console.log('✅ Point removed successfully, new total:', total.value)
+  } else {
+    console.log('⚠️ Point not found for removal:', data.pointId)
+  }
+}
+
+// 处理批量点位移除
+const handleBatchPointsRemoved = (data: any) => {
+  console.log('🔄 Processing batch points removed:', {
+    timestamp: new Date().toISOString(),
+    receivedData: data,
+    pointIds: data?.pointIds || [],
+    updateTime: data?.updateTime
+  })
+  
+  const removedIds = data.pointIds || []
+  let removedCount = 0
+  let notFoundCount = 0
+  
+  removedIds.forEach((pointId: number, index: number) => {
+    console.log(`🗑️ Processing removal ${index + 1}/${removedIds.length}:`, {
+      pointId: pointId
+    })
+    
+    const pointIndex = points.value.findIndex(p => p.id === pointId)
+    if (pointIndex !== -1) {
+      const removedPoint = points.value[pointIndex]
+      console.log(`📝 Removing point ${pointId}:`, {
+        pointName: removedPoint.name,
+        pointValue: removedPoint.value
+      })
+      
+      points.value.splice(pointIndex, 1)
+      removedCount++
+    } else {
+      console.log(`⚠️ Point ${pointId} not found for removal`)
+      notFoundCount++
+    }
+  })
+  
+  total.value -= removedIds.length
+  console.log('✅ Batch removal completed:', {
+    totalRemoved: removedIds.length,
+    actuallyRemoved: removedCount,
+    notFound: notFoundCount,
+    newTotal: total.value
+  })
+}
+
+// 添加分页相关的计算属性
+const paginatedPoints = computed(() => {
+  const start = (query.page - 1) * query.pageSize
+  const end = start + query.pageSize
+  return points.value.slice(start, end)
+})
 </script>
 
 <style lang="scss" scoped>
@@ -523,9 +878,18 @@ const handleCurrentChange = (val: number) => {
       font-weight: 500;
     }
 
-    .header-buttons {
+    .header-info {
       display: flex;
-      gap: 8px;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .connection-status {
+      .el-tag {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
     }
   }
 
