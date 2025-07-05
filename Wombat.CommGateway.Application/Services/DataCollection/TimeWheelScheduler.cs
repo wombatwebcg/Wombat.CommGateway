@@ -15,14 +15,15 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
 {
     /// <summary>
     /// 基于时间轮算法的高效调度器
-    /// 支持毫秒级精度调度，按ScanRate分组执行
+    /// 支持毫秒级精度调度，按(ScanRate, ChannelId)组合分组执行
+    /// 确保不同通道的点位使用独立的客户端连接处理
     /// </summary>
     [AutoInject<TimeWheelScheduler>(ServiceLifetime.Singleton)]
     public class TimeWheelScheduler : IDataCollectionScheduler, IDisposable
     {
         private readonly ILogger<TimeWheelScheduler> _logger;
         private readonly ConcurrentDictionary<int, ScheduledPoint> _scheduledPoints;
-        private readonly ConcurrentDictionary<int, List<ScheduledPoint>> _scanRateGroups;
+        private readonly ConcurrentDictionary<string, List<ScheduledPoint>> _scanRateGroups;
         private readonly Timer _timer;
         private readonly object _lockObject = new object();
         private volatile bool _isRunning;
@@ -39,7 +40,7 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _statistics = new SchedulerStatistics();
-            _scanRateGroups = new ConcurrentDictionary<int, List<ScheduledPoint>>();
+            _scanRateGroups = new ConcurrentDictionary<string, List<ScheduledPoint>>();
             _scheduledPoints = new ConcurrentDictionary<int, ScheduledPoint>();
             _timer = new Timer(ProcessTimeWheel, null, Timeout.Infinite, Timeout.Infinite);
         }
@@ -79,7 +80,6 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
                     // 检查点位是否已存在
                     if (IsPointRegistered(point.Id))
                     {
-                        _logger.LogDebug($"点位 {point.Id} 已存在于调度器中，跳过注册");
                         continue;
                     }
 
@@ -137,7 +137,6 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
                     }
                     else
                     {
-                        _logger.LogDebug($"点位 {pointId} 在调度器中不存在");
                     }
                 }
                 catch (Exception ex)
@@ -175,7 +174,50 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
         /// <returns>扫描周期分组统计</returns>
         public Dictionary<int, int> GetScanRateGroupStatistics()
         {
-            return _scanRateGroups.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.Count);
+            var statistics = new Dictionary<int, int>();
+            
+            foreach (var kvp in _scanRateGroups)
+            {
+                if (TryParseGroupKey(kvp.Key, out var scanRate))
+                {
+                    if (statistics.ContainsKey(scanRate))
+                    {
+                        statistics[scanRate] += kvp.Value.Count;
+                    }
+                    else
+                    {
+                        statistics[scanRate] = kvp.Value.Count;
+                    }
+                }
+            }
+            
+            return statistics;
+        }
+
+        /// <summary>
+        /// 获取按通道分组的点位统计
+        /// </summary>
+        /// <returns>通道分组统计</returns>
+        public Dictionary<int, int> GetChannelGroupStatistics()
+        {
+            var statistics = new Dictionary<int, int>();
+            
+            foreach (var kvp in _scanRateGroups)
+            {
+                if (TryParseGroupKey(kvp.Key, out var scanRate, out var channelId))
+                {
+                    if (statistics.ContainsKey(channelId))
+                    {
+                        statistics[channelId] += kvp.Value.Count;
+                    }
+                    else
+                    {
+                        statistics[channelId] = kvp.Value.Count;
+                    }
+                }
+            }
+            
+            return statistics;
         }
 
         /// <summary>
@@ -198,7 +240,6 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
                 // 检查点位是否已存在
                 if (IsPointRegistered(point.Id))
                 {
-                    _logger.LogDebug($"点位 {point.Id} 已存在于调度器中，跳过注册");
                     return true;
                 }
 
@@ -241,7 +282,6 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
                 }
                 else
                 {
-                    _logger.LogDebug($"点位 {pointId} 在调度器中不存在");
                     return false;
                 }
             }
@@ -321,20 +361,24 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
             {
                 var currentTime = DateTime.UtcNow;
 
-                // 检查每个扫描周期分组
+                // 检查每个扫描周期和通道组合分组
                 foreach (var kvp in _scanRateGroups)
                 {
-                    var scanRate = kvp.Key;
+                    var groupKey = kvp.Key;
                     var points = kvp.Value;
 
-                    if (ShouldExecuteCollection(scanRate, currentTime))
+                    // 解析组合键获取扫描周期
+                    if (TryParseGroupKey(groupKey, out var scanRate))
                     {
-                        var task = CreateCollectionTask(points, currentTime);
-                        if (task != null)
+                        if (ShouldExecuteCollection(scanRate, currentTime))
                         {
-                            OnCollectionTaskReady?.Invoke(task);
-                            _statistics.TotalScheduledTasks++;
-                            _statistics.LastExecutionTime = currentTime;
+                            var task = CreateCollectionTask(points, currentTime);
+                            if (task != null)
+                            {
+                                OnCollectionTaskReady?.Invoke(task);
+                                _statistics.TotalScheduledTasks++;
+                                _statistics.LastExecutionTime = currentTime;
+                            }
                         }
                     }
                 }
@@ -343,6 +387,33 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
             {
                 _logger.LogError(ex, "处理时间轮时发生错误");
             }
+        }
+
+        private bool TryParseGroupKey(string groupKey, out int scanRate)
+        {
+            scanRate = 0;
+            if (string.IsNullOrEmpty(groupKey))
+                return false;
+
+            var parts = groupKey.Split('_');
+            if (parts.Length != 2 || !int.TryParse(parts[0], out scanRate))
+                return false;
+
+            return true;
+        }
+
+        private bool TryParseGroupKey(string groupKey, out int scanRate, out int channelId)
+        {
+            scanRate = 0;
+            channelId = 0;
+            if (string.IsNullOrEmpty(groupKey))
+                return false;
+
+            var parts = groupKey.Split('_');
+            if (parts.Length != 2 || !int.TryParse(parts[0], out scanRate) || !int.TryParse(parts[1], out channelId))
+                return false;
+
+            return true;
         }
 
         private bool ShouldExecuteCollection(int scanRate, DateTime currentTime)
@@ -356,48 +427,42 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
             if (points == null || points.Count == 0)
                 return null;
 
-            // 按通道分组
-            var channelGroups = points.GroupBy(p => p.ChannelId).ToList();
-            
-            foreach (var channelGroup in channelGroups)
+            // 由于现在按 (ScanRate, ChannelId) 分组，所有点位都属于同一通道
+            var channelId = points.First().ChannelId;
+            var deviceId = points.First().DeviceId;
+
+            var task = new CollectionTask
             {
-                var channelId = channelGroup.Key;
-                var channelPoints = channelGroup.ToList();
-
-                var task = new CollectionTask
+                ChannelId = channelId,
+                DeviceId = deviceId,
+                Points = points.Select(p => new CollectionPoint
                 {
-                    ChannelId = channelId,
-                    DeviceId = channelPoints.First().DeviceId,
-                    Points = channelPoints.Select(p => new CollectionPoint
-                    {
-                        PointId = p.PointId,
-                        Address = p.Address,
-                        DataType = p.DataType,
-                        ScanRate = p.ScanRate,
-                        IsEnabled = true
-                    }).ToList(),
-                    ScheduledTime = currentTime,
-                    Status = Models.TaskStatus.Pending
-                };
+                    PointId = p.PointId,
+                    Address = p.Address,
+                    DataType = p.DataType,
+                    ScanRate = p.ScanRate,
+                    IsEnabled = true
+                }).ToList(),
+                ScheduledTime = currentTime,
+                Status = Models.TaskStatus.Pending
+            };
 
-                // 更新点位的下次执行时间
-                foreach (var point in channelPoints)
-                {
-                    point.LastExecutionTime = currentTime;
-                    point.ExecutionCount++;
-                    point.NextExecutionTime = currentTime.AddMilliseconds(point.ScanRate);
-                }
-
-                return task;
+            // 更新点位的下次执行时间
+            foreach (var point in points)
+            {
+                point.LastExecutionTime = currentTime;
+                point.ExecutionCount++;
+                point.NextExecutionTime = currentTime.AddMilliseconds(point.ScanRate);
             }
 
-            return null;
+            return task;
         }
 
         private void AddToScanRateGroup(ScheduledPoint point)
         {
+            var groupKey = $"{point.ScanRate}_{point.ChannelId}";
             _scanRateGroups.AddOrUpdate(
-                point.ScanRate,
+                groupKey,
                 new List<ScheduledPoint> { point },
                 (key, existingList) =>
                 {
@@ -411,14 +476,15 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
 
         private void RemoveFromScanRateGroup(ScheduledPoint point)
         {
-            if (_scanRateGroups.TryGetValue(point.ScanRate, out var points))
+            var groupKey = $"{point.ScanRate}_{point.ChannelId}";
+            if (_scanRateGroups.TryGetValue(groupKey, out var points))
             {
                 lock (points)
                 {
                     points.RemoveAll(p => p.PointId == point.PointId);
                     if (points.Count == 0)
                     {
-                        _scanRateGroups.TryRemove(point.ScanRate, out _);
+                        _scanRateGroups.TryRemove(groupKey, out _);
                     }
                 }
             }

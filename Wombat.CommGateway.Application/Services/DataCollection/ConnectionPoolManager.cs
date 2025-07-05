@@ -174,7 +174,6 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
             if (channel == null)
                 throw new ArgumentNullException(nameof(channel));
 
-            _logger.LogDebug($"通道 {_channelId} 请求获取连接");
 
             // 首先尝试从可用连接池中获取连接
             if (_availableConnections.TryDequeue(out var pooledConnection))
@@ -184,7 +183,6 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
                 {
                     pooledConnection.MarkAsInUse();
                     _activeConnections[pooledConnection.Client] = pooledConnection;
-                    _logger.LogDebug($"通道 {_channelId} 从池中获取到健康连接");
                     return pooledConnection.Client;
                 }
                 else
@@ -251,8 +249,6 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
             if (client == null)
                 return;
 
-            _logger.LogDebug($"通道 {_channelId} 释放连接");
-
             if (_activeConnections.TryRemove(client, out var pooledConnection))
             {
                 try
@@ -263,7 +259,6 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
                         // 连接健康，归还到池中
                         pooledConnection.MarkAsIdle();
                         _availableConnections.Enqueue(pooledConnection);
-                        _logger.LogDebug($"通道 {_channelId} 连接已归还到池中");
                     }
                     else
                     {
@@ -296,7 +291,6 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
                 if (pooledConnection?.Client != null)
                 {
                     await pooledConnection.Client.DisconnectAsync();
-                    _logger.LogDebug($"通道 {_channelId} 连接已销毁");
                 }
             }
             catch (Exception ex)
@@ -307,7 +301,6 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
 
         public void PerformHealthCheck()
         {
-            _logger.LogDebug($"通道 {_channelId} 开始执行健康检查");
 
             var healthCheckIntervalMinutes = 5; // 5分钟健康检查间隔
             var connectionTimeoutMinutes = 30; // 30分钟连接超时
@@ -397,7 +390,6 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
                 }
             }
 
-            _logger.LogDebug($"通道 {_channelId} 健康检查完成，可用连接: {_availableConnections.Count}, 活跃连接: {_activeConnections.Count}");
         }
 
         /// <summary>

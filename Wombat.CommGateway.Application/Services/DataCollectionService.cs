@@ -42,6 +42,9 @@ namespace Wombat.CommGateway.Application.Services
         private readonly IServiceScopeFactory _serviceScopeFactory;
         private readonly TimeWheelScheduler _timeWheelScheduler;
         private readonly ConnectionPoolManager _connectionPoolManager;
+        private TaskCompletionSource<bool> _serviceCompletionSource;
+        private volatile bool _isServiceRunning;
+        private readonly object _serviceLock = new object();
 
 
         
@@ -62,7 +65,7 @@ namespace Wombat.CommGateway.Application.Services
             _connectionPoolManager = connectionPoolManager ?? throw new ArgumentNullException(nameof(connectionPoolManager));
         }
 
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        public override async Task StartAsync(CancellationToken cancellationToken)
         {
             _logger.LogInformation("KepServer风格数据采集服务启动中...");
             
@@ -80,13 +83,69 @@ namespace Wombat.CommGateway.Application.Services
                 // 启动缓存管理器
                 StartCacheManager();
                 
-                _logger.LogInformation("数据采集服务已启动");
-                
-                // 保持服务运行
-                while (!stoppingToken.IsCancellationRequested)
+                lock (_serviceLock)
                 {
-                    await Task.Delay(1000, stoppingToken);
+                    _isServiceRunning = true;
                 }
+                
+                _logger.LogInformation("数据采集服务已启动 - 调度器状态: {SchedulerRunning}, 服务状态: {ServiceRunning}", 
+                    _timeWheelScheduler.IsRunning, _isServiceRunning);
+                
+                // 调用基类方法
+                await base.StartAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "数据采集服务启动时发生错误");
+                throw;
+            }
+        }
+
+        public override async Task StopAsync(CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("数据采集服务停止中...");
+            
+            try
+            {
+                // 停止调度器
+                if (_timeWheelScheduler.IsRunning)
+                {
+                    await StopSchedulerAsync();
+                }
+                
+                // 停止缓存管理器
+                StopCacheManager();
+                
+                lock (_serviceLock)
+                {
+                    _isServiceRunning = false;
+                }
+                
+                _logger.LogInformation("数据采集服务已停止 - 调度器状态: {SchedulerRunning}, 服务状态: {ServiceRunning}", 
+                    _timeWheelScheduler.IsRunning, _isServiceRunning);
+                
+                // 调用基类方法
+                await base.StopAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "数据采集服务停止时发生错误");
+                throw;
+            }
+        }
+
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            // 初始化 TaskCompletionSource
+            _serviceCompletionSource = new TaskCompletionSource<bool>();
+            
+            // 注册取消令牌回调
+            stoppingToken.Register(() => _serviceCompletionSource.TrySetResult(true));
+            
+            try
+            {
+                // 等待取消信号 - 更优雅的方式
+                await _serviceCompletionSource.Task;
             }
             catch (Exception ex)
             {
@@ -94,11 +153,8 @@ namespace Wombat.CommGateway.Application.Services
             }
             finally
             {
-                // 停止所有组件
-                await StopSchedulerAsync();
-                StopCacheManager();
-                
-                _logger.LogInformation("数据采集服务已停止");
+                // 确保 TaskCompletionSource 被设置
+                _serviceCompletionSource?.TrySetResult(true);
             }
         }
         
@@ -180,7 +236,6 @@ namespace Wombat.CommGateway.Application.Services
         {
             try
             {
-                _logger.LogDebug($"处理采集任务: 通道ID={task.ChannelId}, 点位数量={task.Points.Count}");
                 
                 using (var scope = _serviceScopeFactory.CreateScope())
                 {
@@ -242,7 +297,6 @@ namespace Wombat.CommGateway.Application.Services
                             // 更新缓存
                            _cacheManager.BatchUpdateCache(updates);
                             
-                            _logger.LogDebug($"成功采集 {updates.Count} 个点位数据");
                         }
                         else
                         {
@@ -300,7 +354,6 @@ namespace Wombat.CommGateway.Application.Services
                                 // 标记为已刷新
                                 _cacheManager.MarkAsFlushed(batch.Keys);
                                 
-                                _logger.LogDebug($"成功将 {batch.Count} 个点位数据刷新到数据库");
                             }
                             catch (Exception ex)
                             {
@@ -623,6 +676,39 @@ namespace Wombat.CommGateway.Application.Services
             return Task.FromResult(_collectionErrors.TryGetValue(deviceId, out var error) ? error : null);
         }
 
+        /// <inheritdoc/>
+        public async Task RestartServiceAsync()
+        {
+            try
+            {
+                _logger.LogInformation("重启数据采集服务...");
+                
+                // 先停止服务
+                await StopAsync(CancellationToken.None);
+                
+                // 等待一小段时间确保完全停止
+                await Task.Delay(1000);
+                
+                // 再启动服务
+                await StartAsync(CancellationToken.None);
+                
+                _logger.LogInformation("数据采集服务重启完成");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "重启数据采集服务时发生错误");
+                throw;
+            }
+        }
+
+
+
+        /// <inheritdoc/>
+        public Task<bool> GetServiceStatusAsync()
+        {
+            return Task.FromResult(_isServiceRunning);
+        }
+
         public DataTypeEnums ToDataTypeEnums(DataType dataType)
         {
             // 使用 Enum.TryParse 保证安全转换
@@ -654,7 +740,6 @@ namespace Wombat.CommGateway.Application.Services
                 // 检查点位是否启用以及所属设备是否启用
                 if (!point.Enable)
                 {
-                    _logger.LogDebug($"点位 {point.Id} 未启用，跳过注册到调度器");
                     return;
                 }
 
@@ -666,7 +751,6 @@ namespace Wombat.CommGateway.Application.Services
                     
                     if (device == null || !device.Enable)
                     {
-                        _logger.LogDebug($"点位 {point.Id} 所属设备 {point.DeviceId} 不存在或未启用，跳过注册到调度器");
                         return;
                     }
                 }
@@ -745,7 +829,7 @@ namespace Wombat.CommGateway.Application.Services
                 }
                 else
                 {
-                    _logger.LogDebug($"点位 {pointId} 在调度器中不存在或注销失败");
+                    _logger.LogInformation($"点位 {pointId} 在调度器中不存在或注销失败");
                 }
 
                 // 清理缓存中的点位数据
@@ -791,7 +875,7 @@ namespace Wombat.CommGateway.Application.Services
                             }
                             else
                             {
-                                _logger.LogDebug($"点位 {pointId} 所属设备未启用，跳过注册");
+                                _logger.LogInformation($"点位 {pointId} 所属设备未启用，跳过注册");
                             }
                         }
                         else
@@ -810,7 +894,7 @@ namespace Wombat.CommGateway.Application.Services
                     }
                     else
                     {
-                        _logger.LogDebug($"点位 {pointId} 在调度器中不存在或注销失败");
+                        _logger.LogInformation($"点位 {pointId} 在调度器中不存在或注销失败");
                     }
                 }
             }

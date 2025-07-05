@@ -64,7 +64,6 @@ namespace Wombat.CommGateway.Application.Services
                 // 同时推送单个更新（用于实时性要求高的场景）
                 await PushSinglePointUpdateAsync(pointId, value, status, updateTime);
                 
-                _logger.LogDebug($"点位 {pointId} 数据更新已加入推送队列，值: {value}, 状态: {status}");
             }
             catch (Exception ex)
             {
@@ -93,9 +92,7 @@ namespace Wombat.CommGateway.Application.Services
                     Updates = updateList,
                     UpdateTime = DateTime.UtcNow
                 });
-                _logger.LogDebug($"批量推送 {updates.Count} 个点位数据更新");
 
-                _logger.LogInformation($"批量推送 {updates.Count} 个点位数据更新");
             }
             catch (Exception ex)
             {
@@ -118,7 +115,6 @@ namespace Wombat.CommGateway.Application.Services
                     UpdateTime = DateTime.UtcNow
                 });
 
-                _logger.LogDebug($"推送点位 {pointId} 状态变更: {status}");
             }
             catch (Exception ex)
             {
@@ -233,7 +229,6 @@ namespace Wombat.CommGateway.Application.Services
                     UpdateTime = DateTime.UtcNow
                 });
 
-                _logger.LogDebug($"批量推送 {batchUpdates.Count} 个点位数据更新");
             }
             catch (Exception ex)
             {

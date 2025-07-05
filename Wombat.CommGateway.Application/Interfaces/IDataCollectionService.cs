@@ -49,5 +49,15 @@ namespace Wombat.CommGateway.Application.Interfaces
         /// 获取采集错误信息
         /// </summary>
         Task<string> GetCollectionErrorAsync(int deviceId);
+
+        /// <summary>
+        /// 重启数据采集服务
+        /// </summary>
+        Task RestartServiceAsync();
+
+        /// <summary>
+        /// 获取服务运行状态
+        /// </summary>
+        Task<bool> GetServiceStatusAsync();
     }
 } 

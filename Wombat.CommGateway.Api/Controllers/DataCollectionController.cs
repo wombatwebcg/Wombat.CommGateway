@@ -22,6 +22,18 @@ namespace Wombat.CommGateway.API.Controllers
             _collectionService = collectionService;
         }
 
+
+
+        /// <summary>
+        /// 启动数据采集
+        /// </summary>
+        [HttpPost("restart")]
+        public async Task<IActionResult> Restart()
+        {
+            await _collectionService.RestartServiceAsync();
+            return Success();
+        }
+
         /// <summary>
         /// 启动数据采集
         /// </summary>

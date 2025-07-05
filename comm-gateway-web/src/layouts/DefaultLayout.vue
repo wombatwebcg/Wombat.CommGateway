@@ -80,6 +80,16 @@
             class="search-input"
             :prefix-icon="Search"
           />
+          <el-button
+            type="warning"
+            :icon="Refresh"
+            :loading="restartLoading"
+            @click="handleRestart"
+            class="restart-btn"
+            title="重启网关"
+          >
+            重启网关
+          </el-button>
           <el-dropdown @command="handleUserCommand">
             <span class="user-info">
               <el-avatar :size="32" src="https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png" />
@@ -119,15 +129,17 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Search } from '@element-plus/icons-vue'
-import { ElMessageBox } from 'element-plus'
+import { Search, Refresh } from '@element-plus/icons-vue'
+import { ElMessageBox, ElMessage } from 'element-plus'
 import UserProfile from '@/views/profile/UserProfile.vue'
 import ChangePassword from '@/views/profile/ChangePassword.vue'
+import { restartGateway } from '@/api/dataCollection'
 
 const route = useRoute()
 const router = useRouter()
 const isCollapse = ref(false)
 const searchText = ref('')
+const restartLoading = ref(false)
 
 // 动态生成面包屑导航项
 const breadcrumbItems = computed(() => {
@@ -173,6 +185,28 @@ const userInfo = ref({
   role: '超级管理员',
   phone: '138****8888'
 })
+
+// 处理重启网关
+const handleRestart = () => {
+  ElMessageBox.confirm('确定要重启网关吗？重启过程中系统将暂时不可用。', '重启确认', {
+    confirmButtonText: '确定重启',
+    cancelButtonText: '取消',
+    type: 'warning',
+    confirmButtonClass: 'el-button--danger'
+  }).then(async () => {
+    restartLoading.value = true
+    try {
+      await restartGateway()
+      ElMessage.success('网关重启成功')
+    } catch (error) {
+      ElMessage.error('网关重启失败，请稍后重试')
+    } finally {
+      restartLoading.value = false
+    }
+  }).catch(() => {
+    // 取消重启
+  })
+}
 
 // 处理用户下拉菜单命令
 const handleUserCommand = (command: string) => {
@@ -371,6 +405,19 @@ const handleUserCommand = (command: string) => {
         :deep(.el-input__wrapper) {
           border-radius: 4px;
           border-color: #D9D9D9;
+        }
+      }
+      
+      .restart-btn {
+        height: 32px;
+        padding: 0 16px;
+        font-size: 14px;
+        border-radius: 4px;
+        transition: all 0.3s;
+        
+        &:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 2px 8px rgba(245, 108, 108, 0.3);
         }
       }
       

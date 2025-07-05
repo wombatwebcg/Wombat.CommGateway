@@ -290,7 +290,7 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
                 var dirtyData = GetAllDirtyData();
                 if (dirtyData.Count > 0)
                 {
-                    _logger.LogDebug($"触发刷新 {dirtyData.Count} 个脏数据");
+                    _logger.LogInformation($"触发刷新 {dirtyData.Count} 个脏数据");
                     OnFlushRequired?.Invoke(dirtyData);
                 }
 
@@ -318,7 +318,7 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
             var removed = _pointCache.TryRemove(pointId, out _);
             if (removed)
             {
-                _logger.LogDebug($"已从缓存中移除点位 {pointId}");
+                _logger.LogInformation($"已从缓存中移除点位 {pointId}");
             }
             return removed;
         }
