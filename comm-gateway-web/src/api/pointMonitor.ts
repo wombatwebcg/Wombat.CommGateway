@@ -106,7 +106,7 @@ export interface JsonProtocolResponse {
 
 // 获取点位列表
 export const getPointList = (deviceId?: number, groupId?: number) => {
-  let url = '/api/PointMonitor';
+  let url = '/PointMonitor';
   const params: Record<string, any> = {};
   
   if (deviceId) {
@@ -122,12 +122,12 @@ export const getPointList = (deviceId?: number, groupId?: number) => {
 
 // 读取点位值
 export const readPoint = (pointId: number) => {
-  return request.get<PointMonitorResponse>(`/api/PointMonitor/${pointId}`);
+  return request.get<PointMonitorResponse>(`/PointMonitor/${pointId}`);
 };
 
 // 写入点位值
 export const writePoint = (pointId: number, value: any) => {
-  return request.post<PointWriteResponse>(`/api/PointMonitor/${pointId}/write`, { value });
+  return request.post<PointWriteResponse>(`/PointMonitor/${pointId}/write`, { value });
 };
 
 // WebSocket相关函数 --------------------------------
@@ -256,7 +256,7 @@ export const sendJsonProtocolRequest = async (jsonRequest: JsonProtocolRequest):
  */
 async function getDeviceInfo(deviceId: number) {
   try {
-    const response = await request.get<{deviceGroupName: string, deviceName: string}>(`/api/Device/${deviceId}/info`);
+    const response = await request.get<{deviceGroupName: string, deviceName: string}>(`/Device/${deviceId}/info`);
     return {
       deviceGroupName: response.deviceGroupName,
       deviceName: response.deviceName
@@ -275,7 +275,7 @@ async function getDeviceInfo(deviceId: number) {
  */
 async function getDeviceGroupInfo(groupId: number) {
   try {
-    const response = await request.get<{deviceGroupName: string}>(`/api/DeviceGroup/${groupId}/info`);
+    const response = await request.get<{deviceGroupName: string}>(`/DeviceGroup/${groupId}/info`);
     return {
       deviceGroupName: response.deviceGroupName
     };

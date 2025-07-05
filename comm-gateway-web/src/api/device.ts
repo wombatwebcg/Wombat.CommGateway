@@ -12,6 +12,7 @@ export interface Device {
   channelId?: number
   createTime?: string
   updateTime?: string
+
 }
 
 export interface DeviceQuery {

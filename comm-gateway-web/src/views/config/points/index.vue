@@ -823,7 +823,8 @@ const handleSubmit = async () => {
           const pointData: Point = {
             ...form,
             deviceName: device.name || '',
-            createTime: new Date().toISOString()
+            createTime: new Date().toISOString(),
+            updateTime: new Date().toISOString()
           }
           // 确保数据类型是数字
           pointData.dataType = Number(pointData.dataType)

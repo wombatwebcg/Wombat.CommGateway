@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -24,11 +24,12 @@
 	</ItemGroup>
   <ItemGroup>
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
-    <PackageReference Include="Wombat.Extensions.AutoGenerator" Version="1.0.4" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Wombat.CommGateway.Application\Wombat.CommGateway.Application.csproj" />
+	  <ProjectReference Include="..\..\Wombat.Extensions.AutoGenerator\Wombat.Extensions.AutoGenerator\Wombat.Extensions.AutoGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+
   </ItemGroup>
 
 </Project>
