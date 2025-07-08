@@ -35,24 +35,24 @@
           <!-- <el-menu-item index="/config/protocol">协议配置</el-menu-item> -->
         </el-sub-menu>
 
-        <el-menu-item index="/rules">
+        <!--<el-menu-item index="/rules">
           <el-icon><Connection /></el-icon>
           <template #title>规则引擎</template>
-        </el-menu-item>
+        </el-menu-item> -->
 
         <el-menu-item index="/point-monitor">
           <el-icon><Monitor /></el-icon>
           <template #title>点位监视</template>
         </el-menu-item>
 
-        <el-sub-menu index="/monitor">
+        <el-sub-menu index="/log">
           <template #title>
             <el-icon><Monitor /></el-icon>
             <span>日志监控</span>
           </template>
-          <el-menu-item index="/monitor/logs">系统日志</el-menu-item>
-          <el-menu-item index="/monitor/data">数据日志</el-menu-item>
-          <el-menu-item index="/monitor/rpc">RPC日志</el-menu-item>
+          <el-menu-item index="/log/index">系统日志</el-menu-item>
+          <el-menu-item index="/log/data">数据日志</el-menu-item>
+          <el-menu-item index="/log/rpc">RPC日志</el-menu-item>
         </el-sub-menu>
       </el-menu>
     </el-aside>

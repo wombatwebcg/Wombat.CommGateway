@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { dataCollectionSignalR } from '@/utils/signalr-datacollection'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -88,9 +89,9 @@ const routes: RouteRecordRaw[] = [
         }
       },
       {
-        path: 'monitor',
-        name: 'Monitor',
-        component: () => import('@/views/monitor/index.vue'),
+        path: 'log',
+        name: 'Log',
+        component: () => import('@/views/log/index.vue'),
         meta: {
           title: '日志监控',
           icon: 'Monitor',
@@ -100,10 +101,10 @@ const routes: RouteRecordRaw[] = [
           {
             path: '',
             name: 'MonitorDefault',
-            redirect: '/monitor/logs'
+            redirect: '/monitor/index'
           },
           {
-            path: 'logs',
+            path: 'index',
             name: 'SystemLogs',
             component: () => import('@/views/log/index.vue'),
             meta: {
@@ -151,7 +152,7 @@ const router = createRouter({
 })
 
 // 路由守卫
-router.beforeEach(async (to, _from, next) => {
+router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
   
   // 设置页面标题
@@ -191,6 +192,26 @@ router.beforeEach(async (to, _from, next) => {
     }
   } else {
     next()
+  }
+})
+
+// 路由后置守卫 - 处理页面切换时的资源清理
+router.afterEach(async (to, from) => {
+  // 如果从点位监视页面切换出去，清理相关订阅
+  if (from.path === '/point-monitor' && to.path !== '/point-monitor') {
+    console.log('🔄 Route changed from point-monitor, cleaning up subscriptions')
+    try {
+      await dataCollectionSignalR.clearPageSubscriptions('point-monitor')
+      console.log('✅ Point monitor subscriptions cleared on route change')
+    } catch (error) {
+      console.error('❌ Error clearing point monitor subscriptions on route change:', error)
+    }
+  }
+  
+  // 如果切换到点位监视页面，设置页面ID
+  if (to.path === '/point-monitor') {
+    console.log('🔄 Route changed to point-monitor, setting page ID')
+    dataCollectionSignalR.setCurrentPage('point-monitor')
   }
 })
 

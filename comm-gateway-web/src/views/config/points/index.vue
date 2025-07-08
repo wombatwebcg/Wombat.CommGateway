@@ -87,13 +87,6 @@
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="status" label="状态" width="100">
-                <template #default="{ row }">
-                  <el-tag :type="row.status === DataPointStatus.Unknown ? 'info' : 'success'">
-                    {{ statusMap[row.status as DataPointStatus] || '未知' }}
-                  </el-tag>
-                </template>
-              </el-table-column>
               <el-table-column prop="scanRate" label="扫描间隔(ms)" width="120" />
               <el-table-column prop="createTime" label="创建时间" width="180" />
               <el-table-column label="操作" width="200" fixed="right">

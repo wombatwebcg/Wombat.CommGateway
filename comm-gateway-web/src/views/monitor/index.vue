@@ -54,7 +54,7 @@
       <div class="point-list">
         <el-card>
           <div class="table-container">
-            <el-table :data="paginatedPoints" v-loading="loading" border>
+            <el-table :data="paginatedPoints" v-loading="loading || realTimeDataLoading" border>
               <el-table-column prop="name" label="点位名称" min-width="120" />
               <el-table-column prop="deviceName" label="所属设备" min-width="120" />
               <el-table-column prop="address" label="地址" min-width="120" />
@@ -149,12 +149,49 @@
         <el-button type="primary" @click="handleWriteSubmit">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 调试信息抽屉 -->
+    <div class="debug-drawer" v-if="isDev" :class="{ 'debug-drawer--open': debugDrawerVisible }">
+      <div class="debug-drawer__toggle" @click="toggleDebugDrawer">
+        <el-icon><Setting /></el-icon>
+        <span>调试</span>
+      </div>
+      <div class="debug-drawer__content">
+        <div class="debug-drawer__header">
+          <span>调试信息</span>
+          <div class="debug-drawer__actions">
+            <el-button size="small" @click="refreshDebugInfo">刷新</el-button>
+            <el-button size="small" @click="toggleDebugDrawer">关闭</el-button>
+          </div>
+        </div>
+        <div class="debug-drawer__body">
+          <div class="debug-section">
+            <h4>页面信息</h4>
+            <p><strong>页面ID:</strong> {{ pageId }}</p>
+            <p><strong>连接状态:</strong> {{ connectionStatus }}</p>
+            <p><strong>当前节点:</strong> {{ treeManager.getCurrentNode()?.name || '无' }}</p>
+            <p><strong>点位数量:</strong> {{ points.length }}</p>
+          </div>
+          <div class="debug-section">
+            <h4>订阅状态</h4>
+            <p><strong>当前订阅:</strong> {{ currentSubscription ? `${currentSubscription.type}: ${currentSubscription.id}` : '无' }}</p>
+          </div>
+          <div class="debug-section">
+            <h4>实时数据</h4>
+            <p><strong>加载状态:</strong> {{ realTimeDataLoading ? '加载中' : '已完成' }}</p>
+            <p><strong>最后更新:</strong> {{ lastUpdateTime || '无' }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
-import { Plus, Monitor, Folder, Download, Upload, Delete, UploadFilled, Edit } from '@element-plus/icons-vue'
+const isDev = import.meta.env.DEV
+import { ref, reactive, onMounted, onUnmounted, computed, onActivated, onDeactivated } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { Plus, Monitor, Folder, Download, Upload, Delete, UploadFilled, Edit, Setting } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, UploadFile } from 'element-plus'
 import * as XLSX from 'xlsx'
@@ -446,13 +483,35 @@ class TreeManager {
   getTreeData() {
     return [this.root]
   }
+
+  // 获取点位的实时值
+  async getRealTimeValues(points: Point[]): Promise<Point[]> {
+    try {
+      // 通过SignalR获取实时值
+      // 这里可以调用后端的实时值获取接口，或者等待SignalR推送
+      // 暂时返回原始数据，实时值将通过SignalR更新
+      return points.map(point => ({
+        ...point,
+        value: point.value || '' // 确保value字段存在
+      }))
+    } catch (error) {
+      console.error('获取实时值失败:', error)
+      return points
+    }
+  }
 }
+
+// 路由和页面管理
+const route = useRoute()
+const router = useRouter()
+const pageId = 'point-monitor' // 页面唯一标识
 
 // 创建树管理器实例
 const treeManager = new TreeManager()
 const deviceGroups = ref<TreeNode[]>([])
 const points = ref<Point[]>([])
 const loading = ref(false)
+const realTimeDataLoading = ref(false) // 实时数据加载状态
 const total = ref(0)
 const devices = ref<Device[]>([])
 const treeRef = ref()
@@ -465,6 +524,10 @@ const selectedNodeUniqueId = ref<string>('')
 
 // 当前订阅的节点信息
 const currentSubscription = ref<{ type: 'device' | 'group' | 'point', id: number } | null>(null)
+
+// 调试抽屉相关
+const debugDrawerVisible = ref(false)
+const lastUpdateTime = ref<string>('')
 
 // 处理树控件自身的节点点击
 const handleTreeNodeClick = (data: TreeNode, node: any) => {
@@ -500,21 +563,111 @@ const handleNodeClick = async (data: TreeNode) => {
 // 连接状态
 const connectionStatus = ref('Disconnected')
 
+// 页面生命周期管理
+const handlePageActivated = async () => {
+  console.log('📄 Page activated:', pageId)
+  
+  // 设置当前页面ID
+  dataCollectionSignalR.setCurrentPage(pageId)
+  
+  // 检查连接状态
+  const state = dataCollectionSignalR.getConnectionState()
+  if (state === 'Disconnected') {
+    console.log('🔄 Page activated but connection disconnected, attempting to reconnect')
+    try {
+      await dataCollectionSignalR.connect()
+      console.log('✅ Reconnected after page activation')
+      
+      // 重新订阅当前节点
+      await subscribeToCurrentNode()
+    } catch (error) {
+      console.error('❌ Failed to reconnect after page activation:', error)
+    }
+  } else {
+    // 如果连接正常，重新订阅当前节点
+    await subscribeToCurrentNode()
+  }
+}
+
+const handlePageDeactivated = async () => {
+  console.log('📄 Page deactivated:', pageId)
+  
+  // 清理当前页面的订阅
+  try {
+    await dataCollectionSignalR.clearPageSubscriptions(pageId)
+    console.log('✅ Page subscriptions cleared on deactivation')
+  } catch (error) {
+    console.error('❌ Error clearing page subscriptions on deactivation:', error)
+  }
+}
+
 // 监听连接状态变化
 const updateConnectionStatus = () => {
   const state = dataCollectionSignalR.getConnectionState()
+  const previousState = connectionStatus.value
   connectionStatus.value = state || 'Disconnected'
+  
+  // 如果状态发生变化，记录日志
+  if (previousState !== connectionStatus.value) {
+    console.log(`🔄 Connection status changed: ${previousState} -> ${connectionStatus.value}`)
+    
+    // 如果连接恢复，显示提示
+    if (connectionStatus.value === 'Connected' && previousState !== 'Connected') {
+      ElMessage.success('实时连接已恢复')
+    }
+    // 如果连接断开，显示警告
+    else if (connectionStatus.value === 'Disconnected' && previousState !== 'Disconnected') {
+      ElMessage.warning('实时连接已断开，正在尝试重连...')
+    }
+  }
+}
+
+// 页面可见性变化处理
+const handleVisibilityChange = async () => {
+  if (document.visibilityState === 'visible') {
+    console.log('📱 Page became visible, checking connection status')
+    const state = dataCollectionSignalR.getConnectionState()
+    
+    // 如果连接断开，尝试重新连接
+    if (state === 'Disconnected') {
+      console.log('🔄 Page visible but connection disconnected, attempting to reconnect')
+      try {
+        await dataCollectionSignalR.connect()
+        console.log('✅ Reconnected after page became visible')
+        
+        // 重新订阅当前节点
+        await subscribeToCurrentNode()
+      } catch (error) {
+        console.error('❌ Failed to reconnect after page became visible:', error)
+        ElMessage.warning('页面重新可见时连接失败，请手动刷新页面')
+      }
+    } else {
+      console.log('✅ Page visible and connection is healthy')
+      // 即使连接正常，也验证一下订阅状态
+      const isValid = dataCollectionSignalR.validateSubscriptions()
+      if (!isValid) {
+        console.log('⚠️ Page visible but subscriptions invalid, re-subscribing')
+        await subscribeToCurrentNode()
+      }
+    }
+  } else {
+    console.log('📱 Page became hidden')
+  }
 }
 
 // 初始化
 onMounted(async () => {
   loading.value = true
   try {
+    // 设置当前页面ID
+    dataCollectionSignalR.setCurrentPage(pageId)
+    
     await fetchDevices()
     await initDeviceGroupOptions()
     const treeData = await treeManager.initialize()
     deviceGroups.value = [treeData]
     if (treeData.points) {
+      // 先设置基础数据
       points.value = treeData.points.map((point: any) => mapPointData(point, treeManager.getDevice.bind(treeManager)))
       total.value = treeData.points.length
     }
@@ -530,14 +683,28 @@ onMounted(async () => {
     // 订阅当前节点
     await subscribeToCurrentNode()
     
+    // 获取实时值（通过SignalR推送）
+    console.log('等待SignalR推送实时数据...')
+    realTimeDataLoading.value = true
+    
+    // 设置一个超时，确保实时数据能及时显示
+    setTimeout(() => {
+      realTimeDataLoading.value = false
+      console.log('实时数据加载完成')
+    }, 3000) // 3秒后标记为完成
+    
     // 监听连接状态
     updateConnectionStatus()
     // 可以添加定时器定期检查状态
     const statusTimer = setInterval(updateConnectionStatus, 5000)
     
+    // 添加页面可见性监听
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
     // 在onUnmounted中清理
     onUnmounted(() => {
       clearInterval(statusTimer)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       // ... existing cleanup code ...
     })
   } catch (error) {
@@ -548,26 +715,25 @@ onMounted(async () => {
   }
 })
 
+// 页面激活时重新建立订阅
+onActivated(() => {
+  handlePageActivated()
+})
+
+// 页面失活时清理订阅
+onDeactivated(() => {
+  handlePageDeactivated()
+})
+
 onUnmounted(async () => {
   console.log('页面卸载，清理资源')
   
-  // 取消当前订阅
-  if (currentSubscription.value) {
-    try {
-      switch (currentSubscription.value.type) {
-        case 'device':
-          await dataCollectionSignalR.unsubscribeDevice(currentSubscription.value.id)
-          break
-        case 'group':
-          await dataCollectionSignalR.unsubscribeGroup(currentSubscription.value.id)
-          break
-        case 'point':
-          await dataCollectionSignalR.unsubscribePoint(currentSubscription.value.id)
-          break
-      }
-    } catch (error) {
-      console.error('取消订阅失败:', error)
-    }
+  // 清理当前页面的订阅
+  try {
+    await dataCollectionSignalR.clearPageSubscriptions(pageId)
+    console.log('✅ Page subscriptions cleared on unmount')
+  } catch (error) {
+    console.error('❌ Error clearing page subscriptions on unmount:', error)
   }
   
   // 断开SignalR连接
@@ -627,14 +793,22 @@ const handleCurrentChange = (val: number) => {
 // 订阅当前选中节点
 const subscribeToCurrentNode = async () => {
   const currentNode = treeManager.getCurrentNode()
-  if (!currentNode) return
+  if (!currentNode) {
+    console.log('⚠️ No current node to subscribe')
+    return
+  }
   
-  console.log('准备订阅节点:', currentNode.nodeType, currentNode.id)
+  console.log('🔄 Preparing to subscribe to node:', {
+    nodeType: currentNode.nodeType,
+    nodeId: currentNode.id,
+    nodeName: currentNode.name,
+    pageId: pageId
+  })
   
   // 取消之前的订阅
   if (currentSubscription.value) {
     try {
-      console.log('取消之前的订阅:', currentSubscription.value)
+      console.log('🔄 Cancelling previous subscription:', currentSubscription.value)
       switch (currentSubscription.value.type) {
         case 'device':
           await dataCollectionSignalR.unsubscribeDevice(currentSubscription.value.id)
@@ -646,8 +820,10 @@ const subscribeToCurrentNode = async () => {
           await dataCollectionSignalR.unsubscribePoint(currentSubscription.value.id)
           break
       }
+      console.log('✅ Previous subscription cancelled successfully')
     } catch (error) {
-      console.error('取消订阅失败:', error)
+      console.error('❌ Error cancelling previous subscription:', error)
+      // 不抛出错误，继续执行新订阅
     }
   }
   
@@ -657,22 +833,32 @@ const subscribeToCurrentNode = async () => {
       case 'device':
         await dataCollectionSignalR.subscribeDevice(currentNode.id)
         currentSubscription.value = { type: 'device', id: currentNode.id }
-        console.log('已订阅设备:', currentNode.id)
+        console.log('✅ Successfully subscribed to device:', currentNode.id)
         break
       case 'group':
         await dataCollectionSignalR.subscribeGroup(currentNode.id)
         currentSubscription.value = { type: 'group', id: currentNode.id }
-        console.log('已订阅设备组:', currentNode.id)
+        console.log('✅ Successfully subscribed to group:', currentNode.id)
         break
       case 'root':
         // 根节点不订阅，接收所有推送
         currentSubscription.value = null
-        console.log('根节点，不进行特定订阅')
+        console.log('ℹ️ Root node, no specific subscription needed')
+        break
+      default:
+        console.warn('⚠️ Unknown node type:', currentNode.nodeType)
+        currentSubscription.value = null
         break
     }
+    
+    // 验证订阅状态
+    const isValid = dataCollectionSignalR.validateSubscriptions()
+    console.log('🔍 Subscription validation result:', isValid)
+    
   } catch (error) {
-    console.error('订阅失败:', error)
+    console.error('❌ Subscription failed:', error)
     ElMessage.error('订阅失败，请检查网络连接')
+    currentSubscription.value = null
   }
 }
 
@@ -716,26 +902,28 @@ const handlePointUpdate = (data: any) => {
       statusValue = DataPointStatus.Unknown
     }
     
-    // 使用Vue的响应式更新
+    // 使用Vue的响应式更新，确保实时值正确更新
     const originalPoint = points.value[pointIndex]
     const updatedPoint = {
       ...originalPoint,
-      value: data.value,
+      value: data.value || '', // 确保value字段有值
       status: statusValue,
-      updateTime: data.updateTime
+      updateTime: data.updateTime || new Date().toISOString()
     }
     
-    console.log('📝 Updating point:', {
+    console.log('📝 Updating point with real-time value:', {
       pointId: data.pointId,
       originalValue: originalPoint.value,
       newValue: data.value,
       originalStatus: originalPoint.status,
       newStatus: statusValue,
-      statusType: typeof statusValue
+      statusType: typeof statusValue,
+      updateTime: data.updateTime
     })
     
     points.value.splice(pointIndex, 1, updatedPoint)
-    console.log('✅ Point updated successfully')
+    lastUpdateTime.value = new Date().toLocaleTimeString()
+    console.log('✅ Point updated successfully with real-time data')
   } else {
     console.log('⚠️ Point not found in current list:', data.pointId)
   }
@@ -785,17 +973,18 @@ const handleBatchPointsUpdate = (updates: any[]) => {
       const originalPoint = points.value[pointIndex]
       const updatedPoint = {
         ...originalPoint,
-        value: update.value,
+        value: update.value || '', // 确保value字段有值
         status: statusValue,
-        updateTime: update.updateTime
+        updateTime: update.updateTime || new Date().toISOString()
       }
       
-      console.log(`📝 Updating point ${update.pointId}:`, {
+      console.log(`📝 Updating point ${update.pointId} with real-time value:`, {
         originalValue: originalPoint.value,
         newValue: update.value,
         originalStatus: originalPoint.status,
         newStatus: statusValue,
-        statusType: typeof statusValue
+        statusType: typeof statusValue,
+        updateTime: update.updateTime
       })
       
       points.value.splice(pointIndex, 1, updatedPoint)
@@ -811,6 +1000,11 @@ const handleBatchPointsUpdate = (updates: any[]) => {
     updatedCount: updatedCount,
     notFoundCount: notFoundCount
   })
+  
+  // 更新最后更新时间
+  if (updatedCount > 0) {
+    lastUpdateTime.value = new Date().toLocaleTimeString()
+  }
 }
 
 // 处理点位状态变更
@@ -1000,6 +1194,22 @@ const paginatedPoints = computed(() => {
   const end = start + query.pageSize
   return points.value.slice(start, end)
 })
+
+// 刷新调试信息
+const refreshDebugInfo = () => {
+  console.log('Refreshing debug info...')
+  console.log('页面ID:', pageId)
+  console.log('连接状态:', dataCollectionSignalR.getConnectionState())
+  console.log('当前订阅:', currentSubscription.value ? `${currentSubscription.value.type}: ${currentSubscription.value.id}` : '无')
+  console.log('页面订阅验证:', dataCollectionSignalR.validateSubscriptions() ? '有效' : '无效')
+  console.log('当前节点:', treeManager.getCurrentNode()?.name || '无')
+  console.log('点位数量:', points.value.length)
+}
+
+// 切换调试抽屉
+const toggleDebugDrawer = () => {
+  debugDrawerVisible.value = !debugDrawerVisible.value
+}
 </script>
 
 <style lang="scss" scoped>
@@ -1138,6 +1348,107 @@ const paginatedPoints = computed(() => {
 
     .write-btn {
       flex-shrink: 0;
+    }
+  }
+
+  // 调试抽屉样式
+  .debug-drawer {
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1000;
+    transition: all 0.3s ease;
+
+    &__toggle {
+      background: var(--el-color-primary);
+      color: white;
+      padding: 12px 8px;
+      border-radius: 8px 0 0 8px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      transition: all 0.3s ease;
+
+      &:hover {
+        background: var(--el-color-primary-dark-2);
+        transform: translateX(-2px);
+      }
+
+      .el-icon {
+        font-size: 16px;
+      }
+    }
+
+    &__content {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 320px;
+      height: 400px;
+      background: white;
+      border-radius: 8px 0 0 8px;
+      box-shadow: -2px 0 8px rgba(0, 0, 0, 0.15);
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+      display: flex;
+      flex-direction: column;
+    }
+
+    &--open {
+      .debug-drawer__content {
+        transform: translateX(0);
+      }
+    }
+
+    &__header {
+      padding: 16px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 500;
+      color: #333;
+
+      .debug-drawer__actions {
+        display: flex;
+        gap: 8px;
+      }
+    }
+
+    &__body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+
+      .debug-section {
+        margin-bottom: 20px;
+
+        h4 {
+          margin: 0 0 12px 0;
+          font-size: 14px;
+          font-weight: 500;
+          color: #333;
+          border-bottom: 1px solid #eee;
+          padding-bottom: 4px;
+        }
+
+        p {
+          margin: 0 0 8px 0;
+          font-size: 12px;
+          line-height: 1.4;
+          color: #666;
+
+          strong {
+            color: #333;
+            margin-right: 4px;
+          }
+        }
+      }
     }
   }
 }

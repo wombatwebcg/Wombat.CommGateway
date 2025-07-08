@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -7,6 +8,8 @@ using System.Threading.Tasks;
 using Wombat.CommGateway.Application.Hubs;
 using Wombat.CommGateway.Application.Interfaces;
 using Wombat.CommGateway.Domain.Enums;
+using Wombat.Extensions.AutoGenerator.Attributes;
+using Wombat.CommGateway.Application.Services.DataCollection;
 
 namespace Wombat.CommGateway.Application.Services
 {
@@ -14,10 +17,15 @@ namespace Wombat.CommGateway.Application.Services
     /// 数据采集Hub服务
     /// 实现缓存更新通知服务，负责将缓存更新转发到SignalR Hub
     /// </summary>
+    /// 
+
+
+    [AutoInject<ICacheUpdateNotificationService>(ServiceLifetime = ServiceLifetime.Singleton)]
     public class DataCollectionHubService : ICacheUpdateNotificationService
     {
         private readonly IHubContext<DataCollectionHub> _hubContext;
         private readonly ILogger<DataCollectionHubService> _logger;
+        private readonly IDataPushBus _dataPushBus;
         private readonly Queue<(int PointId, string Value, DataPointStatus Status, DateTime UpdateTime)> _updateQueue;
         private readonly object _queueLock = new object();
         private readonly System.Timers.Timer _batchTimer;
@@ -26,10 +34,12 @@ namespace Wombat.CommGateway.Application.Services
 
         public DataCollectionHubService(
             IHubContext<DataCollectionHub> hubContext,
-            ILogger<DataCollectionHubService> logger)
+            ILogger<DataCollectionHubService> logger,
+            IDataPushBus dataPushBus)
         {
             _hubContext = hubContext ?? throw new ArgumentNullException(nameof(hubContext));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _dataPushBus = dataPushBus ?? throw new ArgumentNullException(nameof(dataPushBus));
             
             _updateQueue = new Queue<(int, string, DataPointStatus, DateTime)>();
             
@@ -64,6 +74,18 @@ namespace Wombat.CommGateway.Application.Services
                 // 同时推送单个更新（用于实时性要求高的场景）
                 await PushSinglePointUpdateAsync(pointId, value, status, updateTime);
                 
+                // 发布到WebSocket桥接
+                var message = new
+                {
+                    Type = "PointUpdate",
+                    PointId = pointId,
+                    Value = value,
+                    Status = status.ToString(),
+                    UpdateTime = updateTime
+                };
+                await _dataPushBus.PublishAsync(message);
+                _logger.LogDebug("已发布点位 {PointId} 更新到WebSocket桥接", pointId);
+                
             }
             catch (Exception ex)
             {
@@ -86,12 +108,18 @@ namespace Wombat.CommGateway.Application.Services
                     UpdateTime = kvp.Value.UpdateTime
                 }).ToList();
 
-                await _hubContext.Clients.All.SendAsync("ReceiveBatchPointsUpdate", new
+                var message = new
                 {
                     Type = "BatchPointsUpdate",
                     Updates = updateList,
                     UpdateTime = DateTime.UtcNow
-                });
+                };
+
+                await _hubContext.Clients.All.SendAsync("ReceiveBatchPointsUpdate", message);
+
+                // 发布到WebSocket桥接
+                await _dataPushBus.PublishAsync(message);
+                _logger.LogDebug("已发布批量点位更新到WebSocket桥接，共 {Count} 个点位", updates.Count);
 
             }
             catch (Exception ex)

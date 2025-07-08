@@ -23,6 +23,7 @@ using NPOI.XWPF.UserModel;
 using Microsoft.AspNetCore.SignalR;
 using Wombat.CommGateway.Application.Interfaces;
 using Wombat.CommGateway.Application.Hubs;
+using Wombat.CommGateway.Api.Middlewares;
 
 namespace Wombat.CommGateway.API
 {
@@ -136,9 +137,10 @@ namespace Wombat.CommGateway.API
                 // 启用详细日志
                 options.EnableDetailedErrors = true;
             });
-            
+
+
             // 注册DataCollectionHubService为ICacheUpdateNotificationService实现
-            builder.Services.AddSingleton<ICacheUpdateNotificationService, Wombat.CommGateway.Application.Services.DataCollectionHubService>();
+            //builder.Services.AddSingleton<ICacheUpdateNotificationService, DataCollectionHubService>();
 
             // 添加SignalR的CORS策略
             builder.Services.AddCors(options =>
@@ -178,8 +180,13 @@ namespace Wombat.CommGateway.API
             //    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
             //});
 
+
+            app.UseWebSockets();
             app.UseMiddleware<RequestBodyMiddleware>();
             app.UseMiddleware<RequestLogMiddleware>();
+            // 启用WebSocket桥接中间件，使用独立路径避免与SignalR冲突
+            app.UseMiddleware<WsBridgeMiddleware>();
+
             app.UseStaticFiles(new StaticFileOptions
                 {
                     ServeUnknownFileTypes = true,
@@ -200,11 +207,10 @@ namespace Wombat.CommGateway.API
 
             app.MapControllers();
 
+
             // 注册SignalR Hub路由，使用特定的CORS策略，强制WebSocket传输
-            app.MapHub<DataCollectionHub>("/ws/datacollection", options =>
-            {
-                options.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.WebSockets;
-            })
+            // 注意：WsBridgeMiddleware使用/ws/bridge路径，SignalR使用/ws/datacollection路径，避免冲突
+            app.MapHub<DataCollectionHub>("/ws/datacollection")
                .RequireCors("SignalRPolicy");
 
 
