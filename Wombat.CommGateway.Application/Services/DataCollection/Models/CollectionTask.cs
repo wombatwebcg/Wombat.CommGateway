@@ -109,7 +109,11 @@ namespace Wombat.CommGateway.Application.Services.DataCollection.Models
         /// <summary>
         /// 是否启用
         /// </summary>
-        public bool IsEnabled { get; set; } = true;
+        public bool Enable { get; set; } = true;
+
+
+        public ReadWriteType ReadWrite{ get; set; }
+
     }
 
     /// <summary>

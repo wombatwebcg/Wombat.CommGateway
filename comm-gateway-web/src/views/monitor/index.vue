@@ -63,12 +63,35 @@
                   <el-tag>{{ dataTypeMap[row.dataType as DataType] || '未知' }}</el-tag>
                 </template>
               </el-table-column>
+              <el-table-column prop="readWrite" label="读写类型" width="100">
+                <template #default="{ row }">
+                  <el-tag :type="row.readWrite === ReadWriteType.Read ? 'info' : 'success'">
+                    {{ readWriteMap[row.readWrite as ReadWriteType] || '未知' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
               <el-table-column prop="updateTime" label="更新时间" width="180">
                 <template #default="{ row }">
                   {{ formatUpdateTime(row.updateTime) }}
                 </template>
               </el-table-column>
-              <el-table-column prop="value" label="当前值" min-width="120" />
+              <el-table-column prop="value" label="当前值" min-width="150">
+                <template #default="{ row }">
+                  <div class="value-cell">
+                    <span class="value-text">{{ formatValue(row.value, row.dataType) }}</span>
+                    <el-button
+                      v-if="row.readWrite === ReadWriteType.Write || row.readWrite === ReadWriteType.ReadWrite"
+                      type="primary"
+                      size="small"
+                      :icon="Edit"
+                      @click="handleWriteClick(row)"
+                      class="write-btn"
+                    >
+                      写入
+                    </el-button>
+                  </div>
+                </template>
+              </el-table-column>
               <el-table-column prop="status" label="状态" width="100">
                 <template #default="{ row }">
                   <el-tag :type="row.status === DataPointStatus.Unknown ? 'info' : (row.status === DataPointStatus.Good ? 'success' : 'danger')">
@@ -92,16 +115,51 @@
         </el-card>
       </div>
     </div>
+
+    <!-- 写入点位值对话框 -->
+    <el-dialog
+      v-model="writeDialogVisible"
+      title="写入点位值"
+      width="500px"
+    >
+      <el-form
+        ref="writeFormRef"
+        :model="writeForm"
+        :rules="writeFormRules"
+        label-width="100px"
+      >
+        <el-form-item label="点位名称">
+          <span>{{ writeForm.name }}</span>
+        </el-form-item>
+        <el-form-item label="地址">
+          <span>{{ writeForm.address }}</span>
+        </el-form-item>
+        <el-form-item label="数据类型">
+          <span>{{ dataTypeMap[writeForm.dataType as DataType] }}</span>
+        </el-form-item>
+        <el-form-item label="当前值">
+          <span>{{ formatValue(writeForm.currentValue, writeForm.dataType) }}</span>
+        </el-form-item>
+        <el-form-item label="新值" prop="newValue">
+          <el-input v-model="writeForm.newValue" placeholder="请输入新值" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="writeDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleWriteSubmit">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
-import { Plus, Monitor, Folder, Download, Upload, Delete, UploadFilled } from '@element-plus/icons-vue'
+import { Plus, Monitor, Folder, Download, Upload, Delete, UploadFilled, Edit } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, UploadFile } from 'element-plus'
 import * as XLSX from 'xlsx'
 import { getAllPoints, getDevicePoints, getDeviceGroupPoints, createPoint, updatePoint, deletePoint, updatePointEnable } from '@/api/point'
+import { writePoint } from '@/api/dataCollection'
 import { getAllDevices } from '@/api/device'
 import { getAllDeviceGroups } from '@/api/deviceGroup'
 import type { Point, PointQuery } from '@/api/point'
@@ -856,6 +914,86 @@ const handleBatchPointsRemoved = (data: any) => {
   })
 }
 
+// 写入对话框相关数据
+const writeDialogVisible = ref(false)
+const writeFormRef = ref<FormInstance>()
+const writeForm = reactive({
+  id: 0,
+  name: '',
+  address: '',
+  dataType: DataType.Float,
+  currentValue: '',
+  newValue: ''
+})
+
+// 写入表单验证规则
+const writeFormRules = {
+  newValue: [
+    { required: true, message: '请输入写入值', trigger: 'blur' }
+  ]
+}
+
+// 格式化显示值
+const formatValue = (value: any, dataType: DataType): string => {
+  if (value === null || value === undefined) return ''
+  
+  switch (dataType) {
+    case DataType.Bool:
+      // 处理各种bool值格式
+      if (typeof value === 'boolean') {
+        return value ? 'true' : 'false'
+      } else if (typeof value === 'string') {
+        const lowerValue = value.toLowerCase()
+        if (lowerValue === 'true' || lowerValue === '1' || lowerValue === 'yes') {
+          return 'true'
+        } else if (lowerValue === 'false' || lowerValue === '0' || lowerValue === 'no') {
+          return 'false'
+        }
+      } else if (typeof value === 'number') {
+        return value !== 0 ? 'true' : 'false'
+      }
+      // 默认处理
+      return value ? 'true' : 'false'
+    case DataType.Float:
+    case DataType.Double:
+      return Number(value).toFixed(2)
+    default:
+      return String(value)
+  }
+}
+
+// 处理写入按钮点击
+const handleWriteClick = (row: Point) => {
+  writeForm.id = row.id
+  writeForm.name = row.name
+  writeForm.address = row.address
+  writeForm.dataType = row.dataType
+  writeForm.currentValue = row.value || ''
+  writeForm.newValue = ''
+  writeDialogVisible.value = true
+}
+
+// 处理写入提交
+const handleWriteSubmit = async () => {
+  if (!writeFormRef.value) return
+  
+  await writeFormRef.value.validate(async (valid: boolean) => {
+    if (valid) {
+      try {
+        await writePoint(writeForm.id, writeForm.newValue)
+        ElMessage.success('写入成功')
+        writeDialogVisible.value = false
+        
+        // 刷新数据
+        await handleNodeClick(treeManager.getCurrentNode()!)
+      } catch (error) {
+        console.error('写入点位值失败:', error)
+        ElMessage.error('写入点位值失败')
+      }
+    }
+  })
+}
+
 // 添加分页相关的计算属性
 const paginatedPoints = computed(() => {
   const start = (query.page - 1) * query.pageSize
@@ -981,6 +1119,25 @@ const paginatedPoints = computed(() => {
   .upload-demo {
     :deep(.el-upload-dragger) {
   width: 100%;
+    }
+  }
+
+  .value-cell {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+
+    .value-text {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .write-btn {
+      flex-shrink: 0;
     }
   }
 }

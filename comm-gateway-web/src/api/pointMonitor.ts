@@ -127,7 +127,7 @@ export const readPoint = (pointId: number) => {
 
 // 写入点位值
 export const writePoint = (pointId: number, value: any) => {
-  return request.post<PointWriteResponse>(`/PointMonitor/${pointId}/write`, { value });
+  return request.post<PointWriteResponse>(`/api/DataCollection/point/${pointId}/write`, value);
 };
 
 // WebSocket相关函数 --------------------------------

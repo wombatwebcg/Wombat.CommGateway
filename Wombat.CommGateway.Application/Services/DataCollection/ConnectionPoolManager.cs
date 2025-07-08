@@ -136,6 +136,21 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
             _logger.LogInformation("所有连接池已清理");
         }
 
+        /// <summary>
+        /// 异步清理所有连接池
+        /// </summary>
+        /// <returns>表示异步操作的任务</returns>
+        public async Task ClearAllPoolsAsync()
+        {
+            foreach (var pool in _channelPools.Values)
+            {
+                // 使用Task.Run来异步执行Dispose以避免阻塞
+                await Task.Run(() => pool.Dispose());
+            }
+            _channelPools.Clear();
+            _logger.LogInformation("所有连接池已异步清理完成");
+        }
+
         public void Dispose()
         {
             _healthCheckTimer?.Dispose();

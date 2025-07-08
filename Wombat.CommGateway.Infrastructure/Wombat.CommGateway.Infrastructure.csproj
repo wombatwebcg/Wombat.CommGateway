@@ -21,7 +21,6 @@
 	</ItemGroup>
   <ItemGroup>
 	  <ProjectReference Include="..\Wombat.CommGateway.Domain\Wombat.CommGateway.Domain.csproj" />
-	  <ProjectReference Include="..\..\Wombat.Extensions.AutoGenerator\Wombat.Extensions.AutoGenerator\Wombat.Extensions.AutoGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <None Update="Database\gateway.db3">

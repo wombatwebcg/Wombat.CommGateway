@@ -18,6 +18,7 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
         public string Address { get; set; }
         public DataType DataType { get; set; }
         public int ScanRate { get; set; }
+        public ReadWriteType ReadWrite { get; set; }
         public DateTime NextExecutionTime { get; set; }
         public DateTime LastExecutionTime { get; set; }
         public long ExecutionCount { get; set; }

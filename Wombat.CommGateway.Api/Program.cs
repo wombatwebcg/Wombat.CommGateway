@@ -126,8 +126,17 @@ namespace Wombat.CommGateway.API
             //builder.Services.AddScoped<Wombat.CommGateway.API.RequestBody>();
             builder.Services.AddHostedService<DataCollectionService>();
 
-            // 注册SignalR服务
-            builder.Services.AddSignalR();
+            // 注册SignalR服务，配置WebSocket传输
+            builder.Services.AddSignalR(options =>
+            {
+                // 配置客户端超时
+                options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
+                options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+                
+                // 启用详细日志
+                options.EnableDetailedErrors = true;
+            });
+            
             // 注册DataCollectionHubService为ICacheUpdateNotificationService实现
             builder.Services.AddSingleton<ICacheUpdateNotificationService, Wombat.CommGateway.Application.Services.DataCollectionHubService>();
 
@@ -191,8 +200,11 @@ namespace Wombat.CommGateway.API
 
             app.MapControllers();
 
-            // 注册SignalR Hub路由，使用特定的CORS策略
-            app.MapHub<DataCollectionHub>("/ws/datacollection")
+            // 注册SignalR Hub路由，使用特定的CORS策略，强制WebSocket传输
+            app.MapHub<DataCollectionHub>("/ws/datacollection", options =>
+            {
+                options.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.WebSockets;
+            })
                .RequireCors("SignalRPolicy");
 
 

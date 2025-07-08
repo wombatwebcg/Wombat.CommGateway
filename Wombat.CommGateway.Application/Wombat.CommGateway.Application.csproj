@@ -8,7 +8,6 @@
 
   <ItemGroup>
 	  <ProjectReference Include="..\Wombat.CommGateway.Infrastructure\Wombat.CommGateway.Infrastructure.csproj" />
-	  <ProjectReference Include="..\..\Wombat.Extensions.AutoGenerator\Wombat.Extensions.AutoGenerator\Wombat.Extensions.AutoGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 
   </ItemGroup>
 

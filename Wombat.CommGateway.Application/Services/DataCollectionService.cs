@@ -232,6 +232,11 @@ namespace Wombat.CommGateway.Application.Services
             }
         }
         
+        /// <summary>
+        /// 采集任务
+        /// </summary>
+        /// <param name="task"></param>
+        /// <returns></returns>
         private async Task HandleCollectionTaskAsync(CollectionTask task)
         {
             try
@@ -265,12 +270,16 @@ namespace Wombat.CommGateway.Application.Services
                         
                         foreach (var point in task.Points)
                         {
-                            var address = point.Address.ToUpper();
-                            if (!addresses.ContainsKey(address))
+                            if (point.Enable && (point.ReadWrite == ReadWriteType.Read || point.ReadWrite == ReadWriteType.ReadWrite))
                             {
-                                addresses.Add(address, ToDataTypeEnums(point.DataType));
+                                var address = point.Address.ToUpper();
+                                if (!addresses.ContainsKey(address))
+                                {
+                                    addresses.Add(address, ToDataTypeEnums(point.DataType));
+                                }
+                                pointAddresses[point.PointId] = address;
                             }
-                            pointAddresses[point.PointId] = address;
+
                         }
                         
                         // 批量读取数据
@@ -323,7 +332,165 @@ namespace Wombat.CommGateway.Application.Services
                 _logger.LogError(ex, $"处理采集任务时发生错误: 通道ID={task.ChannelId}");
             }
         }
-        
+
+        /// <inheritdoc/>
+        public async Task WriteDataAsync(int pointId, object value)
+        {
+            try
+            {
+                using (var scope = _serviceScopeFactory.CreateScope())
+                {
+                    var devicePointRepository = scope.ServiceProvider.GetRequiredService<IDevicePointRepository>();
+                    var deviceRepository = scope.ServiceProvider.GetRequiredService<IDeviceRepository>();
+                    var channelRepository = scope.ServiceProvider.GetRequiredService<IChannelRepository>();
+
+                    var point = await devicePointRepository.GetDevicePointAsync(pointId);
+
+                    if (point == null)
+                    {
+                        throw new ArgumentException($"Point with id {pointId} not found.");
+                    }
+                    if (!point.Enable && (point.ReadWrite != ReadWriteType.Write || point.ReadWrite != ReadWriteType.ReadWrite))
+                    {
+                        throw new ArgumentException($"Point type is Error{point.ReadWrite}");
+
+                    }
+                    var device = await deviceRepository.GetByIdAsync(point.DeviceId);
+
+                    if (device == null || !device.Enable)
+                    {
+                        throw new InvalidOperationException($"Device {point.DeviceId} not found or not enabled.");
+                    }
+
+                    var channel = await channelRepository.GetByIdAsync(device.ChannelId);
+
+                    if (channel == null || !channel.Enable)
+                    {
+                        throw new InvalidOperationException($"Channel {device.ChannelId} not found or not enabled.");
+                    }
+
+                    // 从连接池获取连接
+                    var client = await _connectionPoolManager.GetConnectionAsync(channel);
+                    if (client == null || !client.Connected)
+                    {
+                        throw new InvalidOperationException($"Cannot connect to channel {channel.Id}.");
+                    }
+
+                    try
+                    {
+                        // 写入数据
+                        var dataTypeEnum = ToDataTypeEnums(point.DataType);
+                        var result = await client.WriteAsync(dataTypeEnum, point.Address, value);
+                        if (!result.IsSuccess)
+                        {
+                            throw new InvalidOperationException($"Write operation failed: {result.Message}");
+                        }
+
+                        // 更新缓存
+                        _cacheManager.UpdateCache(pointId, value.ToString(), DataPointStatus.Good);
+                    }
+                    finally
+                    {
+                        // 释放连接回连接池
+                        _connectionPoolManager.ReleaseConnection(channel.Id, client);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error writing data for point {pointId}");
+                throw;
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task BatchWriteDataAsync(Dictionary<int, object> pointValues)
+        {
+            try
+            {
+                using (var scope = _serviceScopeFactory.CreateScope())
+                {
+                    var devicePointRepository = scope.ServiceProvider.GetRequiredService<IDevicePointRepository>();
+                    var channelRepository = scope.ServiceProvider.GetRequiredService<IChannelRepository>();
+                    var deviceRepository = scope.ServiceProvider.GetRequiredService<IDeviceRepository>();
+
+                    // 按设备分组
+                    var pointsByDevice = new Dictionary<int, List<(int PointId, object Value)>>();
+                    foreach (var kvp in pointValues)
+                    {
+                        var point = await devicePointRepository.GetDevicePointAsync(kvp.Key);
+                        if (point != null && point.Enable && (point.ReadWrite == ReadWriteType.Write || point.ReadWrite == ReadWriteType.ReadWrite))
+                        {
+                            if (!pointsByDevice.ContainsKey(point.DeviceId))
+                            {
+                                pointsByDevice[point.DeviceId] = new List<(int, object)>();
+                            }
+                            pointsByDevice[point.DeviceId].Add((kvp.Key, kvp.Value));
+                        }
+                    }
+
+                    // 按设备处理
+                    foreach (var deviceKvp in pointsByDevice)
+                    {
+                        var deviceId = deviceKvp.Key;
+                        var devicePoints = deviceKvp.Value;
+
+                        var device = await deviceRepository.GetByIdAsync(deviceId);
+                        if (device == null || !device.Enable)
+                        {
+                            continue;
+                        }
+
+                        var channel = await channelRepository.GetByIdAsync(device.ChannelId);
+                        if (channel == null || !channel.Enable)
+                        {
+                            continue;
+                        }
+
+                        // 从连接池获取连接
+                        var client = await _connectionPoolManager.GetConnectionAsync(channel);
+                        if (client == null || !client.Connected)
+                        {
+                            continue;
+                        }
+
+                        try
+                        {
+                            // 按点位处理
+                            foreach (var (pointId, value) in devicePoints)
+                            {
+                                var point = await devicePointRepository.GetDevicePointAsync(pointId);
+
+                                // 写入数据
+                                var dataTypeEnum = ToDataTypeEnums(point.DataType);
+                                var result = await client.WriteAsync(dataTypeEnum, point.Address, value);
+                                if (result.IsSuccess)
+                                {
+                                    // 更新缓存
+                                    _cacheManager.UpdateCache(pointId, value.ToString(), DataPointStatus.Good);
+                                }
+                                else
+                                {
+                                    _logger.LogWarning($"Write operation failed for point {pointId}: {result.Message}");
+                                }
+                            }
+                        }
+                        finally
+                        {
+                            // 释放连接回连接池
+                            _connectionPoolManager.ReleaseConnection(channel.Id, client);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error batch writing data");
+                throw;
+            }
+        }
+
+
         private void FlushCacheToDatabase(Dictionary<int, (string Value, DataPointStatus Status, DateTime UpdateTime)> dirtyData)
         {
             if (dirtyData == null || dirtyData.Count == 0)
@@ -331,37 +498,37 @@ namespace Wombat.CommGateway.Application.Services
                 
             try
             {
-                using (var scope = _serviceScopeFactory.CreateScope())
-                {
-                    var devicePointRepository = scope.ServiceProvider.GetRequiredService<IDevicePointRepository>();
+                //using (var scope = _serviceScopeFactory.CreateScope())
+                //{
+                //    var devicePointRepository = scope.ServiceProvider.GetRequiredService<IDevicePointRepository>();
                     
-                    // 批量更新数据库
-                    foreach (var batch in BatchPoints(dirtyData, 100)) // 每批100个点位
-                    {
-                        Task.Run(async () =>
-                        {
-                            try
-                            {
-                                foreach (var (pointId, (value, status, updateTime)) in batch)
-                                {
-                                    await devicePointRepository.Select.Where(x => x.Id == pointId).ToUpdate()
-                                        .Set(x => x.Value, value)
-                                        .Set(x => x.Status, status)
-                                        .Set(x => x.UpdateTime, updateTime)
-                                        .ExecuteAffrowsAsync();
-                                }
+                //    // 批量更新数据库
+                //    foreach (var batch in BatchPoints(dirtyData, 100)) // 每批100个点位
+                //    {
+                //        Task.Run(async () =>
+                //        {
+                //            try
+                //            {
+                //                foreach (var (pointId, (value, status, updateTime)) in batch)
+                //                {
+                //                    await devicePointRepository.Select.Where(x => x.Id == pointId).ToUpdate()
+                //                        .Set(x => x.Value, value)
+                //                        .Set(x => x.Status, status)
+                //                        .Set(x => x.UpdateTime, updateTime)
+                //                        .ExecuteAffrowsAsync();
+                //                }
                                 
-                                // 标记为已刷新
-                                _cacheManager.MarkAsFlushed(batch.Keys);
+                //                // 标记为已刷新
+                //                _cacheManager.MarkAsFlushed(batch.Keys);
                                 
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogError(ex, "批量更新数据库时发生错误");
-                            }
-                        });
-                    }
-                }
+                //            }
+                //            catch (Exception ex)
+                //            {
+                //                _logger.LogError(ex, "批量更新数据库时发生错误");
+                //            }
+                //        });
+                //    }
+                //}
             }
             catch (Exception ex)
             {
@@ -512,159 +679,6 @@ namespace Wombat.CommGateway.Application.Services
         }
 
         /// <inheritdoc/>
-        public async Task WriteDataAsync(int pointId, object value)
-        {
-            try
-            {
-                using (var scope = _serviceScopeFactory.CreateScope())
-                {
-                    var devicePointRepository = scope.ServiceProvider.GetRequiredService<IDevicePointRepository>();
-                    var deviceRepository = scope.ServiceProvider.GetRequiredService<IDeviceRepository>();
-                    var channelRepository = scope.ServiceProvider.GetRequiredService<IChannelRepository>();
-                    
-                    var point = await devicePointRepository.GetDevicePointAsync(pointId);
-                    
-                    if (point == null)
-                    {
-                        throw new ArgumentException($"Point with id {pointId} not found.");
-                    }
-                    
-                    var device = await deviceRepository.GetByIdAsync(point.DeviceId);
-                    
-                    if (device == null || !device.Enable)
-                    {
-                        throw new InvalidOperationException($"Device {point.DeviceId} not found or not enabled.");
-                    }
-                    
-                    var channel = await channelRepository.GetByIdAsync(device.ChannelId);
-                    
-                    if (channel == null || !channel.Enable)
-                    {
-                        throw new InvalidOperationException($"Channel {device.ChannelId} not found or not enabled.");
-                    }
-                    
-                    // 从连接池获取连接
-                    var client = await _connectionPoolManager.GetConnectionAsync(channel);
-                    if (client == null || !client.Connected)
-                    {
-                        throw new InvalidOperationException($"Cannot connect to channel {channel.Id}.");
-                    }
-                    
-                    try
-                    {
-                        // 写入数据
-                        var dataTypeEnum = ToDataTypeEnums(point.DataType);
-                        var result = await client.WriteAsync(dataTypeEnum, point.Address, value);
-                        if (!result.IsSuccess)
-                        {
-                            throw new InvalidOperationException($"Write operation failed: {result.Message}");
-                        }
-                        
-                        // 更新缓存
-                        _cacheManager.UpdateCache(pointId, value.ToString(), DataPointStatus.Good);
-                    }
-                    finally
-                    {
-                        // 释放连接回连接池
-                        _connectionPoolManager.ReleaseConnection(channel.Id, client);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error writing data for point {pointId}");
-                throw;
-            }
-        }
-
-        /// <inheritdoc/>
-        public async Task BatchWriteDataAsync(Dictionary<int, object> pointValues)
-        {
-            try
-            {
-                using (var scope = _serviceScopeFactory.CreateScope())
-                {
-                    var devicePointRepository = scope.ServiceProvider.GetRequiredService<IDevicePointRepository>();
-                    var channelRepository = scope.ServiceProvider.GetRequiredService<IChannelRepository>();
-                    var deviceRepository = scope.ServiceProvider.GetRequiredService<IDeviceRepository>();
-                    
-                    // 按设备分组
-                    var pointsByDevice = new Dictionary<int, List<(int PointId, object Value)>>();
-                    foreach (var kvp in pointValues)
-                    {
-                        var point = await devicePointRepository.GetDevicePointAsync(kvp.Key);
-                        if (point != null)
-                        {
-                            if (!pointsByDevice.ContainsKey(point.DeviceId))
-                            {
-                                pointsByDevice[point.DeviceId] = new List<(int, object)>();
-                            }
-                            pointsByDevice[point.DeviceId].Add((kvp.Key, kvp.Value));
-                        }
-                    }
-                    
-                    // 按设备处理
-                    foreach (var deviceKvp in pointsByDevice)
-                    {
-                        var deviceId = deviceKvp.Key;
-                        var devicePoints = deviceKvp.Value;
-                        
-                        var device = await deviceRepository.GetByIdAsync(deviceId);
-                        if (device == null || !device.Enable)
-                        {
-                            continue;
-                        }
-                        
-                        var channel = await channelRepository.GetByIdAsync(device.ChannelId);
-                        if (channel == null || !channel.Enable)
-                        {
-                            continue;
-                        }
-                        
-                        // 从连接池获取连接
-                        var client = await _connectionPoolManager.GetConnectionAsync(channel);
-                        if (client == null || !client.Connected)
-                        {
-                            continue;
-                        }
-                        
-                        try
-                        {
-                            // 按点位处理
-                            foreach (var (pointId, value) in devicePoints)
-                            {
-                                var point = await devicePointRepository.GetDevicePointAsync(pointId);
-                                
-                                // 写入数据
-                                var dataTypeEnum = ToDataTypeEnums(point.DataType);
-                                var result = await client.WriteAsync(dataTypeEnum, point.Address, value);
-                                if (result.IsSuccess)
-                                {
-                                    // 更新缓存
-                                    _cacheManager.UpdateCache(pointId, value.ToString(), DataPointStatus.Good);
-                                }
-                                else
-                                {
-                                    _logger.LogWarning($"Write operation failed for point {pointId}: {result.Message}");
-                                }
-                            }
-                        }
-                        finally
-                        {
-                            // 释放连接回连接池
-                            _connectionPoolManager.ReleaseConnection(channel.Id, client);
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error batch writing data");
-                throw;
-            }
-        }
-
-        /// <inheritdoc/>
         public Task<bool> GetCollectionStatusAsync(int deviceId)
         {
             return Task.FromResult(_collectionStatus.TryGetValue(deviceId, out var status) && status);
@@ -688,6 +702,15 @@ namespace Wombat.CommGateway.Application.Services
                 
                 // 等待一小段时间确保完全停止
                 await Task.Delay(1000);
+                
+                // 清理连接池
+                await _connectionPoolManager.ClearAllPoolsAsync();
+                
+                // 清理时间轮调度器的所有点位
+                _timeWheelScheduler.ClearAllScheduledPoints();
+                
+                // 清理缓存管理器的所有数据
+                _cacheManager.ClearAllCache();
                 
                 // 再启动服务
                 await StartAsync(CancellationToken.None);

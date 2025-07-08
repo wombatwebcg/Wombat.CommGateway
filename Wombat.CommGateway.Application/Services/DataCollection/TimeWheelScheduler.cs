@@ -91,6 +91,7 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
                         Address = point.Address,
                         DataType = point.DataType,
                         ScanRate = point.ScanRate,
+                        ReadWrite = point.ReadWrite,
                         NextExecutionTime = DateTime.UtcNow.AddMilliseconds(point.ScanRate),
                         LastExecutionTime = DateTime.MinValue,
                         ExecutionCount = 0,
@@ -249,6 +250,7 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
                     DeviceId = point.DeviceId,
                     ChannelId = point.Device?.ChannelId ?? 0,
                     Address = point.Address,
+                    ReadWrite = point.ReadWrite,
                     DataType = point.DataType,
                     ScanRate = point.ScanRate,
                     NextExecutionTime = DateTime.UtcNow.AddMilliseconds(point.ScanRate),
@@ -441,7 +443,8 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
                     Address = p.Address,
                     DataType = p.DataType,
                     ScanRate = p.ScanRate,
-                    IsEnabled = true
+                    ReadWrite = p.ReadWrite,
+                    Enable = true
                 }).ToList(),
                 ScheduledTime = currentTime,
                 Status = Models.TaskStatus.Pending

@@ -38,4 +38,16 @@ export function getCollectionError(deviceId: number) {
     url: `/api/DataCollection/device/${deviceId}/error`,
     method: 'get'
   })
+}
+
+// 写入点位值
+export function writePoint(pointId: number, value: any) {
+  return request({
+    url: `/api/DataCollection/point/${pointId}/write`,
+    method: 'post',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    data: value
+  })
 } 

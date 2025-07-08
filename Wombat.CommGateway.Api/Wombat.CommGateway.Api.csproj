@@ -28,7 +28,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Wombat.CommGateway.Application\Wombat.CommGateway.Application.csproj" />
-	  <ProjectReference Include="..\..\Wombat.Extensions.AutoGenerator\Wombat.Extensions.AutoGenerator\Wombat.Extensions.AutoGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 
   </ItemGroup>
 

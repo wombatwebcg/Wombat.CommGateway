@@ -330,23 +330,30 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
         /// <returns>成功移除的点位数量</returns>
         public int BatchRemoveFromCache(IEnumerable<int> pointIds)
         {
-            int removedCount = 0;
+            if (pointIds == null)
+                return 0;
+
+            int count = 0;
             foreach (var pointId in pointIds)
             {
-                if (_pointCache.TryRemove(pointId, out _))
-                {
-                    removedCount++;
-                }
+                if (RemoveFromCache(pointId))
+                    count++;
             }
+            return count;
+        }
+
+        /// <summary>
+        /// 清理所有缓存数据
+        /// </summary>
+        public void ClearAllCache()
+        {
+            _logger.LogInformation("清理所有点位缓存数据...");
+            _pointCache.Clear();
             
-            if (removedCount > 0)
-            {
-                _logger.LogDebug($"已从缓存中移除 {removedCount} 个点位");
-            }
+            // 清理脏数据队列
+            while (_dirtyPoints.TryDequeue(out _)) { }
             
-            return removedCount;
+            _logger.LogInformation("所有点位缓存数据已清理完成");
         }
     }
-
-
 } 
