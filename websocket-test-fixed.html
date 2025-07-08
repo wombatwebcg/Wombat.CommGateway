@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket数据采集服务测试（修复版）</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.connecting {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        
+        button:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+        
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .unsubscribe {
+            background-color: #dc3545;
+        }
+        
+        .unsubscribe:hover:not(:disabled) {
+            background-color: #c82333;
+        }
+        
+        input, select {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #007bff;
+            background-color: white;
+        }
+        
+        .message.error {
+            border-left-color: #dc3545;
+            background-color: #f8d7da;
+        }
+        
+        .message.success {
+            border-left-color: #28a745;
+            background-color: #d4edda;
+        }
+        
+        .message.data-update {
+            border-left-color: #17a2b8;
+            background-color: #d1ecf1;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .subscription-list {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .data-counter {
+            background-color: #17a2b8;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            margin: 5px;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebSocket数据采集服务测试（修复版）</h1>
+    
+    <div class="container">
+        <h2>连接状态</h2>
+        <div id="status" class="status disconnected">未连接</div>
+        <button onclick="connect()">连接</button>
+        <button onclick="disconnect()">断开连接</button>
+        <button onclick="ping()">发送心跳</button>
+        <button onclick="getStats()">获取统计</button>
+        <button onclick="clearMessages()">清除消息</button>
+    </div>
+
+    <div class="grid">
+        <div class="container">
+            <h2>订阅管理</h2>
+            
+            <h3>设备订阅</h3>
+            <input type="number" id="deviceId" placeholder="设备ID" value="1">
+            <button onclick="subscribeDevice()">订阅设备</button>
+            <button onclick="unsubscribeDevice()" class="unsubscribe">取消订阅设备</button>
+            
+            <h3>组订阅</h3>
+            <input type="number" id="groupId" placeholder="组ID" value="1">
+            <button onclick="subscribeGroup()">订阅组</button>
+            <button onclick="unsubscribeGroup()" class="unsubscribe">取消订阅组</button>
+            
+            <h3>点位订阅</h3>
+            <input type="number" id="pointId" placeholder="点位ID" value="1">
+            <button onclick="subscribePoint()">订阅点位</button>
+            <button onclick="unsubscribePoint()" class="unsubscribe">取消订阅点位</button>
+            
+            <button onclick="getSubscriptionStatus()">获取订阅状态</button>
+            
+            <div id="subscriptions" class="subscription-list">
+                <strong>当前订阅：</strong><span id="subscriptionList">无</span>
+            </div>
+            
+            <div>
+                <span class="data-counter">收到数据更新: <span id="dataCounter">0</span></span>
+                <span class="data-counter">点位更新: <span id="pointUpdateCounter">0</span></span>
+                <span class="data-counter">批量更新: <span id="batchUpdateCounter">0</span></span>
+            </div>
+        </div>
+
+        <div class="container">
+            <h2>消息日志</h2>
+            <div id="messages" class="messages"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let dataCounter = 0;
+        let pointUpdateCounter = 0;
+        let batchUpdateCounter = 0;
+        let connectionId = null;
+
+        function updateStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+
+        function addMessage(message, type = 'info') {
+            const messagesEl = document.getElementById('messages');
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            messageEl.innerHTML = `<strong>[${timestamp}]</strong> ${message}`;
+            
+            messagesEl.appendChild(messageEl);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function updateCounters() {
+            document.getElementById('dataCounter').textContent = dataCounter;
+            document.getElementById('pointUpdateCounter').textContent = pointUpdateCounter;
+            document.getElementById('batchUpdateCounter').textContent = batchUpdateCounter;
+        }
+
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                addMessage('WebSocket已经连接', 'error');
+                return;
+            }
+
+            updateStatus('连接中...', 'connecting');
+            addMessage('正在连接到 ws://localhost:5000/ws/datacollection-ws...');
+
+            ws = new WebSocket('ws://localhost:5000/ws/datacollection-ws');
+
+            ws.onopen = function(event) {
+                updateStatus('已连接', 'connected');
+                addMessage('WebSocket连接已建立', 'success');
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleMessage(data);
+                } catch (e) {
+                    addMessage(`解析消息失败: ${event.data}`, 'error');
+                }
+            };
+
+            ws.onclose = function(event) {
+                updateStatus('已断开连接', 'disconnected');
+                addMessage(`WebSocket连接关闭 (code: ${event.code}, reason: ${event.reason})`, 'error');
+                connectionId = null;
+            };
+
+            ws.onerror = function(error) {
+                updateStatus('连接错误', 'disconnected');
+                addMessage(`WebSocket错误: ${error}`, 'error');
+            };
+        }
+
+        function handleMessage(data) {
+            addMessage(`收到消息: ${JSON.stringify(data, null, 2)}`);
+
+            switch (data.type) {
+                case 'connection_status':
+                    connectionId = data.data.connectionId;
+                    addMessage(`连接ID: ${connectionId}`, 'success');
+                    break;
+
+                case 'subscription_confirmed':
+                    addMessage(`订阅确认: ${data.data.target} ${data.data.id}`, 'success');
+                    break;
+
+                case 'unsubscription_confirmed':
+                    addMessage(`取消订阅确认: ${data.data.target} ${data.data.id}`, 'success');
+                    break;
+
+                case 'subscription_status':
+                    const subscriptions = data.data.subscriptions || [];
+                    document.getElementById('subscriptionList').textContent = 
+                        subscriptions.length > 0 ? subscriptions.join(', ') : '无';
+                    addMessage(`当前订阅: ${subscriptions.join(', ')}`, 'success');
+                    break;
+
+                case 'connection_statistics':
+                    addMessage(`连接统计: 总连接数=${data.data.totalConnections}, 总订阅数=${data.data.totalSubscriptions}`, 'success');
+                    break;
+
+                case 'point_update':
+                case 'pointupdate':
+                    dataCounter++;
+                    pointUpdateCounter++;
+                    updateCounters();
+                    addMessage(`点位更新: 点位=${data.data.PointId}, 值=${data.data.Value}, 状态=${data.data.Status}`, 'data-update');
+                    break;
+
+                case 'batch_points_update':
+                case 'batchpointsupdate':
+                    dataCounter++;
+                    batchUpdateCounter++;
+                    updateCounters();
+                    const updateCount = data.data.Updates ? data.data.Updates.length : 0;
+                    addMessage(`批量点位更新: ${updateCount}个点位`, 'data-update');
+                    break;
+
+                case 'point_status_change':
+                case 'pointstatuschange':
+                    dataCounter++;
+                    updateCounters();
+                    addMessage(`点位状态变更: 点位=${data.data.PointId}, 状态=${data.data.Status}`, 'data-update');
+                    break;
+
+                case 'point_removed':
+                case 'pointremoved':
+                    dataCounter++;
+                    updateCounters();
+                    addMessage(`点位移除: 点位=${data.data.PointId}`, 'data-update');
+                    break;
+
+                case 'pong':
+                    addMessage('收到心跳响应', 'success');
+                    break;
+
+                case 'error':
+                    addMessage(`错误: ${data.error}`, 'error');
+                    break;
+
+                default:
+                    addMessage(`未知消息类型: ${data.type}`);
+                    break;
+            }
+        }
+
+        function sendCommand(command) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addMessage('WebSocket未连接', 'error');
+                return;
+            }
+
+            const message = JSON.stringify(command);
+            ws.send(message);
+            addMessage(`发送命令: ${message}`);
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function subscribeDevice() {
+            const deviceId = parseInt(document.getElementById('deviceId').value);
+            if (isNaN(deviceId)) {
+                addMessage('请输入有效的设备ID', 'error');
+                return;
+            }
+            sendCommand({
+                action: 'subscribe',
+                target: 'device',
+                id: deviceId
+            });
+        }
+
+        function unsubscribeDevice() {
+            const deviceId = parseInt(document.getElementById('deviceId').value);
+            if (isNaN(deviceId)) {
+                addMessage('请输入有效的设备ID', 'error');
+                return;
+            }
+            sendCommand({
+                action: 'unsubscribe',
+                target: 'device',
+                id: deviceId
+            });
+        }
+
+        function subscribeGroup() {
+            const groupId = parseInt(document.getElementById('groupId').value);
+            if (isNaN(groupId)) {
+                addMessage('请输入有效的组ID', 'error');
+                return;
+            }
+            sendCommand({
+                action: 'subscribe',
+                target: 'group',
+                id: groupId
+            });
+        }
+
+        function unsubscribeGroup() {
+            const groupId = parseInt(document.getElementById('groupId').value);
+            if (isNaN(groupId)) {
+                addMessage('请输入有效的组ID', 'error');
+                return;
+            }
+            sendCommand({
+                action: 'unsubscribe',
+                target: 'group',
+                id: groupId
+            });
+        }
+
+        function subscribePoint() {
+            const pointId = parseInt(document.getElementById('pointId').value);
+            if (isNaN(pointId)) {
+                addMessage('请输入有效的点位ID', 'error');
+                return;
+            }
+            sendCommand({
+                action: 'subscribe',
+                target: 'point',
+                id: pointId
+            });
+        }
+
+        function unsubscribePoint() {
+            const pointId = parseInt(document.getElementById('pointId').value);
+            if (isNaN(pointId)) {
+                addMessage('请输入有效的点位ID', 'error');
+                return;
+            }
+            sendCommand({
+                action: 'unsubscribe',
+                target: 'point',
+                id: pointId
+            });
+        }
+
+        function ping() {
+            sendCommand({
+                action: 'ping'
+            });
+        }
+
+        function getSubscriptionStatus() {
+            sendCommand({
+                action: 'get_subscription_status'
+            });
+        }
+
+        function getStats() {
+            sendCommand({
+                action: 'get_connection_statistics'
+            });
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+            dataCounter = 0;
+            pointUpdateCounter = 0;
+            batchUpdateCounter = 0;
+            updateCounters();
+        }
+
+        // 页面加载时更新计数器
+        updateCounters();
+    </script>
+</body>
+</html> 

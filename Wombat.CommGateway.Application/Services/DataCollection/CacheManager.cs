@@ -355,5 +355,14 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
             
             _logger.LogInformation("所有点位缓存数据已清理完成");
         }
+
+        /// <summary>
+        /// 获取所有缓存的点位ID
+        /// </summary>
+        /// <returns>所有缓存的点位ID</returns>
+        public IEnumerable<int> GetAllCachedPointIds()
+        {
+            return _pointCache.Keys;
+        }
     }
 } 

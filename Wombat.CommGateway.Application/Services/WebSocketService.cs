@@ -8,27 +8,34 @@ using Wombat.CommGateway.Application.Interfaces;
 using Wombat.CommGateway.Application.Services.DataCollection;
 using Wombat.CommGateway.Application.Services.DataCollection.Models;
 using Wombat.Extensions.AutoGenerator.Attributes;
+using Wombat.CommGateway.Domain.Repositories;
 
 namespace Wombat.CommGateway.Application.Services
 {
     /// <summary>
     /// WebSocket数据采集服务
-    /// 提供与SignalR Hub一致的API，支持设备、点位组、点位的订阅管理
+    /// 提供与SignalR Hub一致的API，支持设备组、设备、点位三种订阅管理
     /// </summary>
     /// 
 
     [AutoInject(ServiceLifetime = ServiceLifetime.Singleton)]
 
-    public class WebSocketService
+    public class WebSocketService : IAsyncDisposable
     {
         private readonly ILogger<WebSocketService> _logger;
         private readonly ISubscriptionManager _subscriptionManager;
         private readonly IDataPushBus _dataPushBus;
         private readonly CacheManager _cacheManager;
+        IServiceScopeFactory _serviceScopeFactory;
         
         // 连接管理
         private readonly ConcurrentDictionary<string, WebSocket> _connections = new();
         private readonly ConcurrentDictionary<string, DateTime> _connectionTimestamps = new();
+        
+        // 全局数据推送监听器
+        private IAsyncDisposable? _globalPushBusRegistration;
+        private volatile bool _isInitialized = false;
+        private readonly object _initLock = new object();
         
         // 消息序列化选项
         private readonly JsonSerializerOptions _jsonOptions = new()
@@ -40,6 +47,7 @@ namespace Wombat.CommGateway.Application.Services
         public WebSocketService(
             ILogger<WebSocketService> logger,
             ISubscriptionManager subscriptionManager,
+            IServiceScopeFactory serviceScopeFactory,
             IDataPushBus dataPushBus,
             CacheManager cacheManager)
         {
@@ -47,6 +55,33 @@ namespace Wombat.CommGateway.Application.Services
             _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
             _dataPushBus = dataPushBus ?? throw new ArgumentNullException(nameof(dataPushBus));
             _cacheManager = cacheManager ?? throw new ArgumentNullException(nameof(cacheManager));
+            _serviceScopeFactory = serviceScopeFactory ?? throw new ArgumentNullException(nameof(serviceScopeFactory));
+        }
+
+        /// <summary>
+        /// 初始化全局数据推送监听器
+        /// </summary>
+        private async Task InitializeGlobalPushListenerAsync()
+        {
+            if (_isInitialized)
+                return;
+
+            lock (_initLock)
+            {
+                if (_isInitialized)
+                    return;
+
+                _logger.LogInformation("初始化WebSocket全局数据推送监听器...");
+                
+                // 注册全局数据推送监听器
+                _globalPushBusRegistration = _dataPushBus.RegisterAsync(async msg =>
+                {
+                    await HandleGlobalDataPushMessageAsync(msg);
+                });
+
+                _isInitialized = true;
+                _logger.LogInformation("WebSocket全局数据推送监听器已初始化");
+            }
         }
 
         /// <summary>
@@ -56,6 +91,9 @@ namespace Wombat.CommGateway.Application.Services
         {
             try
             {
+                // 确保全局推送监听器已初始化
+                await InitializeGlobalPushListenerAsync();
+
                 // 注册连接
                 _connections.TryAdd(connectionId, webSocket);
                 _connectionTimestamps.TryAdd(connectionId, DateTime.UtcNow);
@@ -70,12 +108,6 @@ namespace Wombat.CommGateway.Application.Services
                     timestamp = DateTime.UtcNow
                 });
                 await SendToConnectionAsync(connectionId, connectionMessage);
-
-                // 注册数据推送监听器
-                await using var pushBusRegistration = _dataPushBus.RegisterAsync(async msg =>
-                {
-                    await HandleDataPushMessageAsync(connectionId, msg);
-                });
 
                 // 处理客户端消息
                 await HandleClientMessagesAsync(webSocket, connectionId);
@@ -187,32 +219,23 @@ namespace Wombat.CommGateway.Application.Services
 
         /// <summary>
         /// 处理订阅命令
+        /// 使用新的类型明确的订阅API
         /// </summary>
         private async Task HandleSubscribeAsync(string connectionId, WebSocketCommand command)
         {
             if (command.Target == SubscriptionTargets.Device)
             {
-                // 从CacheManager获取设备下所有点位ID
-                var pointIds = GetPointIdsByDeviceFromCache(command.Id);
-                foreach (var pointId in pointIds)
-                {
-                    _subscriptionManager.Add(connectionId, pointId);
-                }
-                _logger.LogInformation("客户端 {ConnectionId} 订阅设备 {Id}，共{Count}个点位(来自缓存)", connectionId, command.Id, pointIds.Count);
+                _subscriptionManager.SubscribeToDevice(connectionId, command.Id);
+                _logger.LogInformation("客户端 {ConnectionId} 订阅设备 {Id}", connectionId, command.Id);
             }
             else if (command.Target == SubscriptionTargets.Group)
             {
-                // 从CacheManager获取组下所有点位ID
-                var pointIds = GetPointIdsByGroupFromCache(command.Id);
-                foreach (var pointId in pointIds)
-                {
-                    _subscriptionManager.Add(connectionId, pointId);
-                }
-                _logger.LogInformation("客户端 {ConnectionId} 订阅组 {Id}，共{Count}个点位(来自缓存)", connectionId, command.Id, pointIds.Count);
+                _subscriptionManager.SubscribeToGroup(connectionId, command.Id);
+                _logger.LogInformation("客户端 {ConnectionId} 订阅设备组 {Id}", connectionId, command.Id);
             }
             else if (command.Target == SubscriptionTargets.Point)
             {
-                _subscriptionManager.Add(connectionId, command.Id);
+                _subscriptionManager.SubscribeToPoint(connectionId, command.Id);
                 _logger.LogInformation("客户端 {ConnectionId} 订阅点位 {Id}", connectionId, command.Id);
             }
             else
@@ -227,30 +250,23 @@ namespace Wombat.CommGateway.Application.Services
 
         /// <summary>
         /// 处理取消订阅命令
+        /// 使用新的类型明确的取消订阅API
         /// </summary>
         private async Task HandleUnsubscribeAsync(string connectionId, WebSocketCommand command)
         {
             if (command.Target == SubscriptionTargets.Device)
             {
-                var pointIds = GetPointIdsByDeviceFromCache(command.Id);
-                foreach (var pointId in pointIds)
-                {
-                    _subscriptionManager.Remove(connectionId, pointId);
-                }
-                _logger.LogInformation("客户端 {ConnectionId} 取消订阅设备 {Id}，共{Count}个点位(来自缓存)", connectionId, command.Id, pointIds.Count);
+                _subscriptionManager.UnsubscribeFromDevice(connectionId, command.Id);
+                _logger.LogInformation("客户端 {ConnectionId} 取消订阅设备 {Id}", connectionId, command.Id);
             }
             else if (command.Target == SubscriptionTargets.Group)
             {
-                var pointIds = GetPointIdsByGroupFromCache(command.Id);
-                foreach (var pointId in pointIds)
-                {
-                    _subscriptionManager.Remove(connectionId, pointId);
-                }
-                _logger.LogInformation("客户端 {ConnectionId} 取消订阅组 {Id}，共{Count}个点位(来自缓存)", connectionId, command.Id, pointIds.Count);
+                _subscriptionManager.UnsubscribeFromGroup(connectionId, command.Id);
+                _logger.LogInformation("客户端 {ConnectionId} 取消订阅设备组 {Id}", connectionId, command.Id);
             }
             else if (command.Target == SubscriptionTargets.Point)
             {
-                _subscriptionManager.Remove(connectionId, command.Id);
+                _subscriptionManager.UnsubscribeFromPoint(connectionId, command.Id);
                 _logger.LogInformation("客户端 {ConnectionId} 取消订阅点位 {Id}", connectionId, command.Id);
             }
             else
@@ -274,25 +290,44 @@ namespace Wombat.CommGateway.Application.Services
 
         /// <summary>
         /// 处理获取订阅状态命令
+        /// 使用新的GetConnectionStatus API
         /// </summary>
         private async Task HandleGetSubscriptionStatusAsync(string connectionId)
         {
-            var subscriptions = _subscriptionManager.Get(connectionId);
+            var status = _subscriptionManager.GetConnectionStatus(connectionId);
             var statusMessage = WebSocketMessage.CreateSubscriptionStatus(connectionId, new
             {
-                connectionId,
-                subscriptions = subscriptions
+                connectionId = status.ConnectionId,
+                totalSubscriptions = status.TotalSubscriptions,
+                groupSubscriptions = status.GroupSubscriptions,
+                deviceSubscriptions = status.DeviceSubscriptions,
+                pointSubscriptions = status.PointSubscriptions,
+                lastActivityTime = status.LastActivityTime
             });
             await SendToConnectionAsync(connectionId, statusMessage);
         }
 
         /// <summary>
         /// 处理获取连接统计命令
+        /// 使用新的GetConnectionStatus API获取详细统计
         /// </summary>
         private async Task HandleGetConnectionStatisticsAsync(string connectionId)
         {
             var allConnections = _subscriptionManager.GetAllConnections();
-            var totalSubscriptions = allConnections.Sum(c => _subscriptionManager.Get(c).Count);
+            var totalSubscriptions = 0;
+            var groupSubscriptions = 0;
+            var deviceSubscriptions = 0;
+            var pointSubscriptions = 0;
+
+            // 统计各类订阅数量
+            foreach (var connId in allConnections)
+            {
+                var status = _subscriptionManager.GetConnectionStatus(connId);
+                groupSubscriptions += status.GroupSubscriptions.Count;
+                deviceSubscriptions += status.DeviceSubscriptions.Count;
+                pointSubscriptions += status.PointSubscriptions.Count;
+                totalSubscriptions += status.TotalSubscriptions;
+            }
             
             var statisticsMessage = new WebSocketMessage
             {
@@ -301,6 +336,9 @@ namespace Wombat.CommGateway.Application.Services
                 {
                     totalConnections = allConnections.Count,
                     totalSubscriptions = totalSubscriptions,
+                    groupSubscriptions = groupSubscriptions,
+                    deviceSubscriptions = deviceSubscriptions,
+                    pointSubscriptions = pointSubscriptions,
                     connectionIds = allConnections
                 },
                 ConnectionId = connectionId,
@@ -310,68 +348,122 @@ namespace Wombat.CommGateway.Application.Services
         }
 
         /// <summary>
-        /// 处理数据推送消息
+        /// 处理全局数据推送消息
         /// </summary>
-        private async Task HandleDataPushMessageAsync(string connectionId, object message)
+        private async Task HandleGlobalDataPushMessageAsync(object message)
         {
             try
             {
-                // 检查连接是否仍然存在
-                if (!_connections.ContainsKey(connectionId))
-                {
-                    return;
-                }
-
-                // 根据消息类型确定是否需要推送给该连接
                 if (message is JsonElement element && element.TryGetProperty("Type", out var typeElement))
                 {
                     var messageType = typeElement.GetString();
-                    var shouldPush = messageType switch
+                    
+                    switch (messageType)
                     {
-                        "PointUpdate" => ShouldPushPointUpdate(connectionId, element),
-                        "BatchPointsUpdate" => true, // 批量更新推送给所有连接
-                        "PointStatusChange" => ShouldPushPointUpdate(connectionId, element),
-                        "PointRemoved" => ShouldPushPointUpdate(connectionId, element),
-                        _ => false
-                    };
-
-                    if (shouldPush)
-                    {
-                        var wsMessage = new WebSocketMessage
-                        {
-                            Type = messageType.ToLowerInvariant(),
-                            Data = message,
-                            Timestamp = DateTime.UtcNow
-                        };
-                        await SendToConnectionAsync(connectionId, wsMessage);
+                        case "PointUpdate":
+                            await HandlePointUpdateMessage(element);
+                            break;
+                        case "BatchPointsUpdate":
+                            await HandleBatchPointsUpdateMessage(element);
+                            break;
+                        case "PointStatusChange":
+                            await HandlePointUpdateMessage(element); // 使用相同的逻辑
+                            break;
+                        case "PointRemoved":
+                            await HandlePointUpdateMessage(element); // 使用相同的逻辑
+                            break;
+                        default:
+                            _logger.LogDebug("收到未知类型的数据推送消息: {MessageType}", messageType);
+                            break;
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "处理数据推送消息时发生错误 - 连接ID: {ConnectionId}", connectionId);
+                _logger.LogError(ex, "处理全局数据推送消息时发生错误");
             }
         }
 
         /// <summary>
-        /// 检查是否应该推送点位更新给指定连接
+        /// 处理点位更新消息
+        /// 使用优化的GetConnectionsForPointUpdate方法获取所有相关连接
         /// </summary>
-        private bool ShouldPushPointUpdate(string connectionId, JsonElement messageElement)
+        private async Task HandlePointUpdateMessage(JsonElement messageElement)
         {
             try
             {
                 if (messageElement.TryGetProperty("PointId", out var pointIdElement))
                 {
                     var pointId = pointIdElement.GetInt32();
-                    var subscribedConnections = _subscriptionManager.GetConnectionsByItem(pointId);
-                    return subscribedConnections.Contains(connectionId);
+                    
+                    // 使用优化的数据推送查询，一次性获取所有相关连接（包括层级订阅）
+                    var subscribedConnections = _subscriptionManager.GetConnectionsForPointUpdate(pointId);
+                    
+                    if (subscribedConnections.Any())
+                    {
+                        var messageType = messageElement.TryGetProperty("Type", out var typeElement) 
+                            ? typeElement.GetString()?.ToLowerInvariant() 
+                            : "point_update";
+
+                        var wsMessage = new WebSocketMessage
+                        {
+                            Type = messageType,
+                            Data = JsonDocument.Parse(messageElement.GetRawText()).RootElement,
+                            Timestamp = DateTime.UtcNow
+                        };
+
+                        // 并发推送给所有订阅的连接
+                        var pushTasks = subscribedConnections.Select(connectionId => 
+                            SendToConnectionAsync(connectionId, wsMessage));
+                        
+                        await Task.WhenAll(pushTasks);
+                        
+                        _logger.LogDebug("点位 {PointId} 更新已推送到 {Count} 个连接（包括层级订阅）", pointId, subscribedConnections.Count);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("点位 {PointId} 更新没有找到订阅的连接", pointId);
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "检查点位更新推送条件时发生错误");
+                _logger.LogError(ex, "处理点位更新消息时发生错误");
             }
-            return false;
+        }
+
+        /// <summary>
+        /// 处理批量点位更新消息
+        /// </summary>
+        private async Task HandleBatchPointsUpdateMessage(JsonElement messageElement)
+        {
+            try
+            {
+                // 批量更新消息推送给所有连接
+                var allConnections = _subscriptionManager.GetAllConnections();
+                
+                if (allConnections.Any())
+                {
+                    var wsMessage = new WebSocketMessage
+                    {
+                        Type = "batch_points_update",
+                        Data = JsonDocument.Parse(messageElement.GetRawText()).RootElement,
+                        Timestamp = DateTime.UtcNow
+                    };
+
+                    // 并发推送给所有连接
+                    var pushTasks = allConnections.Select(connectionId => 
+                        SendToConnectionAsync(connectionId, wsMessage));
+                    
+                    await Task.WhenAll(pushTasks);
+                    
+                    _logger.LogDebug("批量点位更新已推送到 {Count} 个连接", allConnections.Count);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "处理批量点位更新消息时发生错误");
+            }
         }
 
         /// <summary>
@@ -438,48 +530,14 @@ namespace Wombat.CommGateway.Application.Services
         public IReadOnlyList<string> GetAllConnectionIds() => _connections.Keys.ToList();
 
         /// <summary>
-        /// 从CacheManager获取设备下所有点位ID
+        /// 释放资源
         /// </summary>
-        private List<int> GetPointIdsByDeviceFromCache(int deviceId)
+        public async ValueTask DisposeAsync()
         {
-            // 假设CacheManager有GetAllCachedValues或类似方法，返回所有点位及其DeviceId
-            // 这里需根据实际CacheManager实现调整
-            var all = _cacheManager.BatchGetCachedValues(_cacheManager.GetAllDirtyData().Keys);
-            return all.Keys
-                .Select(pointId => new { pointId, deviceId = TryGetDeviceId(pointId) })
-                .Where(x => x.deviceId == deviceId)
-                .Select(x => x.pointId)
-                .ToList();
-        }
-
-        /// <summary>
-        /// 从CacheManager获取组下所有点位ID
-        /// </summary>
-        private List<int> GetPointIdsByGroupFromCache(int groupId)
-        {
-            // 假设CacheManager有GetAllCachedValues或类似方法，返回所有点位及其GroupId
-            // 这里需根据实际CacheManager实现调整
-            var all = _cacheManager.BatchGetCachedValues(_cacheManager.GetAllDirtyData().Keys);
-            return all.Keys
-                .Select(pointId => new { pointId, groupId = TryGetGroupId(pointId) })
-                .Where(x => x.groupId == groupId)
-                .Select(x => x.pointId)
-                .ToList();
-        }
-
-        // 需要实现TryGetDeviceId和TryGetGroupId方法，通常需要点位元数据支持
-        private int TryGetDeviceId(int pointId)
-        {
-            // TODO: 实现通过pointId查找DeviceId的逻辑
-            // 可通过IDevicePointService或缓存的点位元数据实现
-            return 0;
-        }
-
-        private int TryGetGroupId(int pointId)
-        {
-            // TODO: 实现通过pointId查找GroupId的逻辑
-            // 可通过IDevicePointService或缓存的点位元数据实现
-            return 0;
+            if (_globalPushBusRegistration != null)
+            {
+                await _globalPushBusRegistration.DisposeAsync();
+            }
         }
     }
 } 

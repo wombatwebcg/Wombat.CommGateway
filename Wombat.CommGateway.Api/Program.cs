@@ -23,7 +23,8 @@ using NPOI.XWPF.UserModel;
 using Microsoft.AspNetCore.SignalR;
 using Wombat.CommGateway.Application.Interfaces;
 using Wombat.CommGateway.Application.Hubs;
-using Wombat.CommGateway.Api.Middlewares;
+using Wombat.CommGateway.Application.Services.DataCollection;
+
 
 
 namespace Wombat.CommGateway.API
@@ -127,6 +128,7 @@ namespace Wombat.CommGateway.API
 
             //builder.Services.AddScoped<Wombat.CommGateway.API.RequestBody>();
             builder.Services.AddHostedService<DataCollectionService>();
+            builder.Services.AddHostedService<HierarchyCacheInitializationService>();
 
             // 注册SignalR服务，配置WebSocket传输
             builder.Services.AddSignalR(options =>
@@ -195,7 +197,7 @@ namespace Wombat.CommGateway.API
             {
                 if (context.WebSockets.IsWebSocketRequest)
                 {
-                    var webSocketService = context.RequestServices.GetRequiredService<Wombat.CommGateway.Application.Services.WebSocketService>();
+                    var webSocketService = context.RequestServices.GetRequiredService<WebSocketService>();
                     var webSocket = await context.WebSockets.AcceptWebSocketAsync();
                     var connectionId = Guid.NewGuid().ToString("N");
                     await webSocketService.HandleConnectionAsync(webSocket, connectionId);
