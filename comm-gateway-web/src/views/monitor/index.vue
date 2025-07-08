@@ -677,8 +677,6 @@ onMounted(async () => {
     console.log('SignalR连接已建立')
     
     // 设置消息处理器
-    dataCollectionSignalR.onPointUpdate(handlePointUpdate)
-    dataCollectionSignalR.onBatchPointsUpdate(handleBatchPointsUpdate)
     
     // 订阅当前节点
     await subscribeToCurrentNode()
@@ -701,11 +699,23 @@ onMounted(async () => {
     // 添加页面可见性监听
     document.addEventListener('visibilitychange', handleVisibilityChange)
     
+    // 注册多页面SignalR推送handler
+    dataCollectionSignalR.addPointUpdateHandler(pageId, handlePointUpdate)
+    dataCollectionSignalR.addBatchPointsUpdateHandler(pageId, handleBatchPointsUpdate)
+    dataCollectionSignalR.addPointStatusChangeHandler(pageId, handlePointStatusChange)
+    dataCollectionSignalR.addPointRemovedHandler(pageId, handlePointRemoved)
+    dataCollectionSignalR.addBatchPointsRemovedHandler(pageId, handleBatchPointsRemoved)
+    
     // 在onUnmounted中清理
     onUnmounted(() => {
       clearInterval(statusTimer)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
-      // ... existing cleanup code ...
+      // 注销多页面SignalR推送handler
+      dataCollectionSignalR.removePointUpdateHandler(pageId)
+      dataCollectionSignalR.removeBatchPointsUpdateHandler(pageId)
+      dataCollectionSignalR.removePointStatusChangeHandler(pageId)
+      dataCollectionSignalR.removePointRemovedHandler(pageId)
+      dataCollectionSignalR.removeBatchPointsRemovedHandler(pageId)
     })
   } catch (error) {
     console.error('初始化失败:', error)
@@ -723,6 +733,12 @@ onActivated(() => {
 // 页面失活时清理订阅
 onDeactivated(() => {
   handlePageDeactivated()
+  // 注销多页面SignalR推送handler
+  dataCollectionSignalR.removePointUpdateHandler(pageId)
+  dataCollectionSignalR.removeBatchPointsUpdateHandler(pageId)
+  dataCollectionSignalR.removePointStatusChangeHandler(pageId)
+  dataCollectionSignalR.removePointRemovedHandler(pageId)
+  dataCollectionSignalR.removeBatchPointsRemovedHandler(pageId)
 })
 
 onUnmounted(async () => {
@@ -743,6 +759,12 @@ onUnmounted(async () => {
   } catch (error) {
     console.error('断开SignalR连接失败:', error)
   }
+  // 注销多页面SignalR推送handler
+  dataCollectionSignalR.removePointUpdateHandler(pageId)
+  dataCollectionSignalR.removeBatchPointsUpdateHandler(pageId)
+  dataCollectionSignalR.removePointStatusChangeHandler(pageId)
+  dataCollectionSignalR.removePointRemovedHandler(pageId)
+  dataCollectionSignalR.removeBatchPointsRemovedHandler(pageId)
 })
 
 // 查询参数
@@ -864,6 +886,11 @@ const subscribeToCurrentNode = async () => {
 
 // 处理单个点位更新
 const handlePointUpdate = (data: any) => {
+  // 页面ID校验，防止脏推送
+  if (dataCollectionSignalR.getCurrentPageId && dataCollectionSignalR.getCurrentPageId() !== pageId) {
+    // 非本页面推送，忽略
+    return;
+  }
   console.log('🔄 Processing single point update:', {
     timestamp: new Date().toISOString(),
     receivedData: data,
@@ -931,6 +958,11 @@ const handlePointUpdate = (data: any) => {
 
 // 处理批量点位更新
 const handleBatchPointsUpdate = (updates: any[]) => {
+  // 页面ID校验，防止脏推送
+  if (dataCollectionSignalR.getCurrentPageId && dataCollectionSignalR.getCurrentPageId() !== pageId) {
+    // 非本页面推送，忽略
+    return;
+  }
   console.log('🔄 Processing batch points update:', {
     timestamp: new Date().toISOString(),
     updatesCount: updates.length,
@@ -1009,6 +1041,10 @@ const handleBatchPointsUpdate = (updates: any[]) => {
 
 // 处理点位状态变更
 const handlePointStatusChange = (data: any) => {
+  // 页面ID校验，防止脏推送
+  if (dataCollectionSignalR.getCurrentPageId && dataCollectionSignalR.getCurrentPageId() !== pageId) {
+    return;
+  }
   console.log('🔄 Processing point status change:', {
     timestamp: new Date().toISOString(),
     receivedData: data,
@@ -1041,6 +1077,10 @@ const handlePointStatusChange = (data: any) => {
 
 // 处理点位移除
 const handlePointRemoved = (data: any) => {
+  // 页面ID校验，防止脏推送
+  if (dataCollectionSignalR.getCurrentPageId && dataCollectionSignalR.getCurrentPageId() !== pageId) {
+    return;
+  }
   console.log('🔄 Processing point removed:', {
     timestamp: new Date().toISOString(),
     receivedData: data,
@@ -1067,6 +1107,10 @@ const handlePointRemoved = (data: any) => {
 
 // 处理批量点位移除
 const handleBatchPointsRemoved = (data: any) => {
+  // 页面ID校验，防止脏推送
+  if (dataCollectionSignalR.getCurrentPageId && dataCollectionSignalR.getCurrentPageId() !== pageId) {
+    return;
+  }
   console.log('🔄 Processing batch points removed:', {
     timestamp: new Date().toISOString(),
     receivedData: data,

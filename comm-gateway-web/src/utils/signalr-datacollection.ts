@@ -55,8 +55,13 @@ type BatchPointsUpdateHandler = (data: PointUpdateItem[]) => void
 
 class DataCollectionSignalR {
   private connection: HubConnection | null = null
-  private pointUpdateHandler: PointUpdateHandler | null = null
-  private batchPointsUpdateHandler: BatchPointsUpdateHandler | null = null
+
+  // 多页面回调注册
+  private pointUpdateHandlers: Map<string, PointUpdateHandler> = new Map()
+  private batchPointsUpdateHandlers: Map<string, BatchPointsUpdateHandler> = new Map()
+  private pointStatusChangeHandlers: Map<string, (data: any) => void> = new Map()
+  private pointRemovedHandlers: Map<string, (data: any) => void> = new Map()
+  private batchPointsRemovedHandlers: Map<string, (data: any) => void> = new Map()
   
   // 全局订阅状态管理
   private currentSubscriptions: {
@@ -227,43 +232,52 @@ class DataCollectionSignalR {
 
     // 添加数据接收监听
     this.connection.on('ReceivePointUpdate', (data: any) => {
-      console.log('📡 SignalR received single point update:', {
-        timestamp: new Date().toISOString(),
-        data: data,
-        dataType: typeof data,
-        dataKeys: data ? Object.keys(data) : []
-      })
-      
       // 验证数据格式
       if (this.validatePointUpdateData(data)) {
-        this.pointUpdateHandler && this.pointUpdateHandler(data as PointUpdateData)
+        if (this.pointUpdateHandlers.size > 0) {
+          console.log('📡 SignalR received single point update:', {
+            timestamp: new Date().toISOString(),
+            data: data,
+            dataType: typeof data,
+            dataKeys: data ? Object.keys(data) : []
+          })
+        }
+        // 分发到所有注册的handler
+        this.pointUpdateHandlers.forEach(handler => handler(data as PointUpdateData))
       } else {
         console.error('❌ Invalid point update data format:', data)
       }
     })
 
     this.connection.on('ReceiveBatchPointsUpdate', (msg: any) => {
-      console.log('📡 SignalR received batch points update:', {
-        timestamp: new Date().toISOString(),
-        message: msg,
-        messageType: typeof msg,
-        hasUpdates: msg && Array.isArray(msg.updates),
-        updatesCount: msg && Array.isArray(msg.updates) ? msg.updates.length : 0,
-        updates: msg && Array.isArray(msg.updates) ? msg.updates : []
-      })
-      
       // 验证数据格式
       if (this.validateBatchPointsUpdateMessage(msg)) {
-        this.batchPointsUpdateHandler && this.batchPointsUpdateHandler(msg.updates)
+        if (this.batchPointsUpdateHandlers.size > 0) {
+          console.log('📡 SignalR received batch points update:', {
+            timestamp: new Date().toISOString(),
+            message: msg,
+            messageType: typeof msg,
+            hasUpdates: msg && Array.isArray(msg.updates),
+            updatesCount: msg && Array.isArray(msg.updates) ? msg.updates.length : 0,
+            updates: msg && Array.isArray(msg.updates) ? msg.updates : []
+          })
+        }
+        this.batchPointsUpdateHandlers.forEach(handler => handler(msg.updates))
       } else {
         console.error('❌ Invalid batch points update message format:', msg)
-        // 添加详细的验证调试信息
         this.debugBatchPointsUpdateMessage(msg)
-        
-        // 临时：即使验证失败也尝试处理数据
         if (msg && msg.updates && Array.isArray(msg.updates)) {
-          console.log('⚠️ Attempting to process data despite validation failure')
-          this.batchPointsUpdateHandler && this.batchPointsUpdateHandler(msg.updates)
+          if (this.batchPointsUpdateHandlers.size > 0) {
+            console.log('📡 SignalR received batch points update:', {
+              timestamp: new Date().toISOString(),
+              message: msg,
+              messageType: typeof msg,
+              hasUpdates: msg && Array.isArray(msg.updates),
+              updatesCount: msg && Array.isArray(msg.updates) ? msg.updates.length : 0,
+              updates: msg && Array.isArray(msg.updates) ? msg.updates : []
+            })
+          }
+          this.batchPointsUpdateHandlers.forEach(handler => handler(msg.updates))
         }
       }
     })
@@ -277,7 +291,7 @@ class DataCollectionSignalR {
       
       // 验证数据格式
       if (this.validatePointStatusChangeData(data)) {
-        console.log('✅ Point status change data validated successfully')
+        this.pointStatusChangeHandlers.forEach(handler => handler(data))
       } else {
         console.error('❌ Invalid point status change data format:', data)
       }
@@ -291,7 +305,7 @@ class DataCollectionSignalR {
       
       // 验证数据格式
       if (this.validatePointRemovedData(data)) {
-        console.log('✅ Point removed data validated successfully')
+        this.pointRemovedHandlers.forEach(handler => handler(data))
       } else {
         console.error('❌ Invalid point removed data format:', data)
       }
@@ -305,7 +319,7 @@ class DataCollectionSignalR {
       
       // 验证数据格式
       if (this.validateBatchPointsRemovedData(data)) {
-        console.log('✅ Batch points removed data validated successfully')
+        this.batchPointsRemovedHandlers.forEach(handler => handler(data))
       } else {
         console.error('❌ Invalid batch points removed data format:', data)
       }
@@ -323,12 +337,36 @@ class DataCollectionSignalR {
     }
   }
 
-  onPointUpdate(handler: PointUpdateHandler) {
-    this.pointUpdateHandler = handler
+  // 多页面回调注册/注销API
+  public addPointUpdateHandler(pageId: string, handler: PointUpdateHandler) {
+    this.pointUpdateHandlers.set(pageId, handler)
   }
-
-  onBatchPointsUpdate(handler: BatchPointsUpdateHandler) {
-    this.batchPointsUpdateHandler = handler
+  public removePointUpdateHandler(pageId: string) {
+    this.pointUpdateHandlers.delete(pageId)
+  }
+  public addBatchPointsUpdateHandler(pageId: string, handler: BatchPointsUpdateHandler) {
+    this.batchPointsUpdateHandlers.set(pageId, handler)
+  }
+  public removeBatchPointsUpdateHandler(pageId: string) {
+    this.batchPointsUpdateHandlers.delete(pageId)
+  }
+  public addPointStatusChangeHandler(pageId: string, handler: (data: any) => void) {
+    this.pointStatusChangeHandlers.set(pageId, handler)
+  }
+  public removePointStatusChangeHandler(pageId: string) {
+    this.pointStatusChangeHandlers.delete(pageId)
+  }
+  public addPointRemovedHandler(pageId: string, handler: (data: any) => void) {
+    this.pointRemovedHandlers.set(pageId, handler)
+  }
+  public removePointRemovedHandler(pageId: string) {
+    this.pointRemovedHandlers.delete(pageId)
+  }
+  public addBatchPointsRemovedHandler(pageId: string, handler: (data: any) => void) {
+    this.batchPointsRemovedHandlers.set(pageId, handler)
+  }
+  public removeBatchPointsRemovedHandler(pageId: string) {
+    this.batchPointsRemovedHandlers.delete(pageId)
   }
 
   async subscribeDevice(deviceId: number) {
@@ -468,6 +506,10 @@ class DataCollectionSignalR {
 
   getConnectionState() {
     return this.connection?.state
+  }
+
+  public getCurrentPageId() {
+    return this.currentPageId;
   }
 
   // 恢复之前的订阅

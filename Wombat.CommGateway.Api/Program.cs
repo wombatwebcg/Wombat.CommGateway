@@ -25,6 +25,7 @@ using Wombat.CommGateway.Application.Interfaces;
 using Wombat.CommGateway.Application.Hubs;
 using Wombat.CommGateway.Api.Middlewares;
 
+
 namespace Wombat.CommGateway.API
 {
     public class Program
@@ -138,6 +139,8 @@ namespace Wombat.CommGateway.API
                 options.EnableDetailedErrors = true;
             });
 
+            // 注册WebSocket服务
+
 
             // 注册DataCollectionHubService为ICacheUpdateNotificationService实现
             //builder.Services.AddSingleton<ICacheUpdateNotificationService, DataCollectionHubService>();
@@ -185,7 +188,23 @@ namespace Wombat.CommGateway.API
             app.UseMiddleware<RequestBodyMiddleware>();
             app.UseMiddleware<RequestLogMiddleware>();
             // 启用WebSocket桥接中间件，使用独立路径避免与SignalR冲突
-            app.UseMiddleware<WsBridgeMiddleware>();
+            //app.UseMiddleware<WsBridgeMiddleware>();
+
+            // 配置WebSocket服务路由
+            app.Map("/ws/datacollection-ws", async context =>
+            {
+                if (context.WebSockets.IsWebSocketRequest)
+                {
+                    var webSocketService = context.RequestServices.GetRequiredService<Wombat.CommGateway.Application.Services.WebSocketService>();
+                    var webSocket = await context.WebSockets.AcceptWebSocketAsync();
+                    var connectionId = Guid.NewGuid().ToString("N");
+                    await webSocketService.HandleConnectionAsync(webSocket, connectionId);
+                }
+                else
+                {
+                    context.Response.StatusCode = 400;
+                }
+            });
 
             app.UseStaticFiles(new StaticFileOptions
                 {
