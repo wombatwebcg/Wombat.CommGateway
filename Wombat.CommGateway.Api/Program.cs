@@ -128,7 +128,6 @@ namespace Wombat.CommGateway.API
 
             //builder.Services.AddScoped<Wombat.CommGateway.API.RequestBody>();
             builder.Services.AddHostedService<DataCollectionService>();
-            builder.Services.AddHostedService<HierarchyCacheInitializationService>();
 
             // 注册SignalR服务，配置WebSocket传输
             builder.Services.AddSignalR(options =>

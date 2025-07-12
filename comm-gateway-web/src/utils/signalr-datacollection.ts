@@ -164,7 +164,7 @@ class DataCollectionSignalR {
     return this.pageSubscriptions.get(this.currentPageId) || null
   }
 
-  // 验证订阅状态
+  // 验证订阅状态 - 增强版，适配优化后的推送架构
   validateSubscriptions(): boolean {
     const currentPage = this.getCurrentPageSubscriptions()
     if (!currentPage) {
@@ -176,14 +176,55 @@ class DataCollectionSignalR {
                            currentPage.groups.length > 0 || 
                            currentPage.points.length > 0
 
-    console.log(`🔍 Subscription validation for page ${this.currentPageId}:`, {
+    // 检查连接状态
+    const connectionState = this.getConnectionState()
+    const isConnected = connectionState === 'Connected'
+
+    console.log(`🔍 Enhanced subscription validation for page ${this.currentPageId}:`, {
       hasSubscriptions,
+      isConnected,
+      connectionState,
       devices: currentPage.devices.length,
       groups: currentPage.groups.length,
-      points: currentPage.points.length
+      points: currentPage.points.length,
+      globalDevices: this.currentSubscriptions.devices.length,
+      globalGroups: this.currentSubscriptions.groups.length,
+      globalPoints: this.currentSubscriptions.points.length
     })
 
-    return hasSubscriptions
+    return hasSubscriptions && isConnected
+  }
+
+  // 获取详细的订阅统计信息 - 新增方法，用于调试
+  getSubscriptionStatistics() {
+    const currentPage = this.getCurrentPageSubscriptions()
+    const connectionState = this.getConnectionState()
+    
+    return {
+      connectionState,
+      isConnected: connectionState === 'Connected',
+      currentPageId: this.currentPageId,
+      currentPage: currentPage ? {
+        pageId: currentPage.pageId,
+        devices: currentPage.devices.length,
+        groups: currentPage.groups.length,
+        points: currentPage.points.length,
+        timestamp: new Date(currentPage.timestamp).toLocaleString()
+      } : null,
+      global: {
+        devices: this.currentSubscriptions.devices.length,
+        groups: this.currentSubscriptions.groups.length,
+        points: this.currentSubscriptions.points.length
+      },
+      totalPages: this.pageSubscriptions.size,
+      handlers: {
+        pointUpdate: this.pointUpdateHandlers.size,
+        batchPointsUpdate: this.batchPointsUpdateHandlers.size,
+        pointStatusChange: this.pointStatusChangeHandlers.size,
+        pointRemoved: this.pointRemovedHandlers.size,
+        batchPointsRemoved: this.batchPointsRemovedHandlers.size
+      }
+    }
   }
 
   async connect() {
@@ -230,68 +271,78 @@ class DataCollectionSignalR {
       await this.restoreSubscriptions()
     })
 
-    // 添加数据接收监听
+    // 添加数据接收监听 - 适配优化后的后端推送架构
     this.connection.on('ReceivePointUpdate', (data: any) => {
-      // 验证数据格式
+      // 验证数据格式，支持后端统一分发服务的数据格式
       if (this.validatePointUpdateData(data)) {
         if (this.pointUpdateHandlers.size > 0) {
-          console.log('📡 SignalR received single point update:', {
+          console.log('📡 SignalR received single point update (优化架构):', {
             timestamp: new Date().toISOString(),
             data: data,
             dataType: typeof data,
-            dataKeys: data ? Object.keys(data) : []
+            dataKeys: data ? Object.keys(data) : [],
+            pointId: data?.pointId,
+            value: data?.value,
+            status: data?.status
           })
         }
+        
+        // 标准化数据格式，适配后端可能的大小写变化
+        const normalizedData = this.normalizePointUpdateData(data)
+        
         // 分发到所有注册的handler
-        this.pointUpdateHandlers.forEach(handler => handler(data as PointUpdateData))
+        this.pointUpdateHandlers.forEach(handler => handler(normalizedData))
       } else {
         console.error('❌ Invalid point update data format:', data)
+        console.error('❌ Expected format: { type, pointId, value, status, updateTime }')
       }
     })
 
     this.connection.on('ReceiveBatchPointsUpdate', (msg: any) => {
-      // 验证数据格式
+      // 验证数据格式，适配优化后的后端推送架构
       if (this.validateBatchPointsUpdateMessage(msg)) {
         if (this.batchPointsUpdateHandlers.size > 0) {
-          console.log('📡 SignalR received batch points update:', {
+          console.log('📡 SignalR received batch points update (优化架构):', {
             timestamp: new Date().toISOString(),
             message: msg,
             messageType: typeof msg,
-            hasUpdates: msg && Array.isArray(msg.updates),
-            updatesCount: msg && Array.isArray(msg.updates) ? msg.updates.length : 0,
-            updates: msg && Array.isArray(msg.updates) ? msg.updates : []
+            hasUpdates: msg && Array.isArray(msg.updates || (msg as any).Updates),
+            updatesCount: (msg.updates || (msg as any).Updates)?.length || 0,
+            updates: msg.updates || (msg as any).Updates || []
           })
         }
-        this.batchPointsUpdateHandlers.forEach(handler => handler(msg.updates))
+        
+        // 标准化批量更新数据格式
+        const normalizedUpdates = this.normalizeBatchPointsUpdateData(msg)
+        this.batchPointsUpdateHandlers.forEach(handler => handler(normalizedUpdates))
       } else {
         console.error('❌ Invalid batch points update message format:', msg)
         this.debugBatchPointsUpdateMessage(msg)
-        if (msg && msg.updates && Array.isArray(msg.updates)) {
-          if (this.batchPointsUpdateHandlers.size > 0) {
-            console.log('📡 SignalR received batch points update:', {
-              timestamp: new Date().toISOString(),
-              message: msg,
-              messageType: typeof msg,
-              hasUpdates: msg && Array.isArray(msg.updates),
-              updatesCount: msg && Array.isArray(msg.updates) ? msg.updates.length : 0,
-              updates: msg && Array.isArray(msg.updates) ? msg.updates : []
-            })
-          }
-          this.batchPointsUpdateHandlers.forEach(handler => handler(msg.updates))
+        
+        // 尝试处理可能的格式变化
+        const updates = msg?.updates || msg?.Updates
+        if (updates && Array.isArray(updates)) {
+          console.log('⚠️ Fallback: Processing batch update with non-standard format')
+          const normalizedUpdates = this.normalizeBatchPointsUpdateData(msg)
+          this.batchPointsUpdateHandlers.forEach(handler => handler(normalizedUpdates))
         }
       }
     })
 
-    // 添加其他可能的SignalR消息监听
+    // 添加其他可能的SignalR消息监听 - 适配优化后的推送架构
     this.connection.on('ReceivePointStatusChange', (data: any) => {
-      console.log('📡 SignalR received point status change:', {
+      console.log('📡 SignalR received point status change (优化架构):', {
         timestamp: new Date().toISOString(),
-        data: data
+        data: data,
+        pointId: data?.PointId || data?.pointId,
+        status: data?.Status || data?.status
       })
       
       // 验证数据格式
       if (this.validatePointStatusChangeData(data)) {
-        this.pointStatusChangeHandlers.forEach(handler => handler(data))
+        // 标准化数据格式
+        const normalizedData = this.normalizePointStatusChangeData(data)
+        this.pointStatusChangeHandlers.forEach(handler => handler(normalizedData))
       } else {
         console.error('❌ Invalid point status change data format:', data)
       }
@@ -599,14 +650,53 @@ class DataCollectionSignalR {
     }
   }
 
+  // 标准化点位更新数据格式，处理后端可能的大小写变化
+  private normalizePointUpdateData(data: any): PointUpdateData {
+    return {
+      type: data.Type || data.type || 'PointUpdate',
+      pointId: data.PointId || data.pointId,
+      value: data.Value || data.value || '',
+      status: data.Status || data.status || 'Unknown',
+      updateTime: data.UpdateTime || data.updateTime || new Date().toISOString()
+    }
+  }
+
+  // 标准化批量点位更新数据格式，处理后端可能的大小写变化
+  private normalizeBatchPointsUpdateData(msg: any): PointUpdateItem[] {
+    const updates = msg?.updates || msg?.Updates || []
+    
+    return updates.map((update: any) => ({
+      pointId: update.PointId || update.pointId,
+      value: update.Value || update.value || '',
+      status: update.Status || update.status || 'Unknown',
+      updateTime: update.UpdateTime || update.updateTime || new Date().toISOString()
+    }))
+  }
+
+  // 标准化点位状态变更数据格式，处理后端可能的大小写变化
+  private normalizePointStatusChangeData(data: any): PointStatusChangeData {
+    return {
+      type: data.Type || data.type || 'PointStatusChange',
+      pointId: data.PointId || data.pointId,
+      status: data.Status || data.status || 'Unknown',
+      updateTime: data.UpdateTime || data.updateTime || new Date().toISOString()
+    }
+  }
+
   // 验证单个点位更新数据格式
   private validatePointUpdateData(data: any): data is PointUpdateData {
+    const pointId = data.PointId || data.pointId
+    const value = data.Value || data.value
+    const status = data.Status || data.status
+    const updateTime = data.UpdateTime || data.updateTime
+    const type = data.Type || data.type
+    
     return data &&
-      typeof data.type === 'string' &&
-      typeof data.pointId === 'number' &&
-      typeof data.value === 'string' &&
-      typeof data.status === 'string' &&
-      typeof data.updateTime === 'string'
+      typeof type === 'string' &&
+      typeof pointId === 'number' &&
+      typeof value === 'string' &&
+      typeof status === 'string' &&
+      typeof updateTime === 'string'
   }
 
   // 验证批量点位更新消息格式

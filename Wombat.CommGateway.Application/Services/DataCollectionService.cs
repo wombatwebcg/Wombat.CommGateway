@@ -44,6 +44,7 @@ namespace Wombat.CommGateway.Application.Services
         private readonly IServiceScopeFactory _serviceScopeFactory;
         private readonly TimeWheelScheduler _timeWheelScheduler;
         private readonly ConnectionPoolManager _connectionPoolManager;
+        private readonly ISubscriptionManager _subscriptionManager;
         private TaskCompletionSource<bool> _serviceCompletionSource;
         private volatile bool _isServiceRunning;
         private readonly object _serviceLock = new object();
@@ -58,6 +59,7 @@ namespace Wombat.CommGateway.Application.Services
             TimeWheelScheduler timeWheelScheduler,
             CacheManager cacheManager,
             ConnectionPoolManager connectionPoolManager,
+            ISubscriptionManager subscriptionManager,
             IServiceScopeFactory serviceScopeFactory)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -65,6 +67,7 @@ namespace Wombat.CommGateway.Application.Services
             _timeWheelScheduler = timeWheelScheduler ?? throw new ArgumentNullException(nameof(timeWheelScheduler));
             _cacheManager = cacheManager??throw new ArgumentNullException(nameof(cacheManager));
             _connectionPoolManager = connectionPoolManager ?? throw new ArgumentNullException(nameof(connectionPoolManager));
+            _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
         }
 
         public override async Task StartAsync(CancellationToken cancellationToken)
@@ -165,7 +168,9 @@ namespace Wombat.CommGateway.Application.Services
             _logger.LogInformation("初始化数据采集组件...");
             _timeWheelScheduler.OnCollectionTaskReady += HandleCollectionTaskAsync;
            _cacheManager.OnFlushRequired += FlushCacheToDatabase;
-
+            
+            // 记录层级关系维护方式的变更
+            _logger.LogInformation("层级关系维护已集成到数据采集服务中，将在点位注册时同步更新层级关系");
         }
         
         private async Task StartSchedulerAsync()
@@ -194,7 +199,7 @@ namespace Wombat.CommGateway.Application.Services
 
         private async Task RegisterAllPointsAsync()
         {
-            _logger.LogInformation("注册所有点位到调度器...");
+            _logger.LogInformation("注册所有点位到调度器并更新层级关系...");
             
             using (var scope = _serviceScopeFactory.CreateScope())
             {
@@ -209,26 +214,49 @@ namespace Wombat.CommGateway.Application.Services
                     
                     int registeredCount = 0;
                     
+                    // 清空层级关系缓存，准备重建
+                    _logger.LogInformation("清空层级关系缓存，准备重建...");
+                    
+                    // 首先建立设备与设备组的层级关系
+                    foreach (var device in devices)
+                    {
+                        _subscriptionManager.UpdateDeviceHierarchy(device.Id, device.DeviceGroupId);
+                    }
+                    
+                    _logger.LogInformation($"已更新 {devices.Count} 个设备的层级关系");
+                    
+                    // 然后处理启用的设备和点位
                     foreach (var device in enabledDevices)
                     {
                         if (device.Points != null)
                         {
                             foreach (var point in device.Points)
                             {
+                                // 更新点位与设备的层级关系
+                                _subscriptionManager.UpdatePointHierarchy(point.Id, device.Id);
+                                
                                 if (point.Enable)
                                 {
+                                    // 确保点位有正确的设备导航属性，这样调度器就能获取到ChannelId
+                                    if (point.Device == null)
+                                    {
+                                        point.Device = device;
+                                    }
+                                    
                                     await _timeWheelScheduler.RegisterPointAsync(point);
                                     registeredCount++;
+                                    
+                                    _logger.LogDebug($"点位 {point.Id} 已注册到调度器，设备 {device.Id}，通道 {device.ChannelId}");
                                 }
                             }
                         }
                     }
                     
-                    _logger.LogInformation($"成功注册 {registeredCount} 个点位到调度器");
+                    _logger.LogInformation($"成功注册 {registeredCount} 个点位到调度器，并更新了层级关系缓存");
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "注册点位到调度器时发生错误");
+                    _logger.LogError(ex, "注册点位到调度器并更新层级关系时发生错误");
                     throw;
                 }
             }
@@ -243,6 +271,7 @@ namespace Wombat.CommGateway.Application.Services
         {
             try
             {
+                _logger.LogDebug($"开始处理采集任务 - 通道ID: {task.ChannelId}, 点位数量: {task.Points?.Count ?? 0}");
                 
                 using (var scope = _serviceScopeFactory.CreateScope())
                 {
@@ -256,6 +285,8 @@ namespace Wombat.CommGateway.Application.Services
                         return;
                     }
                     
+                    _logger.LogDebug($"通道 {task.ChannelId} 有效，开始获取连接");
+                    
                     // 从连接池获取连接
                     var client = await _connectionPoolManager.GetConnectionAsync(channel);
                     if (client == null || !client.Connected)
@@ -263,6 +294,8 @@ namespace Wombat.CommGateway.Application.Services
                         _logger.LogWarning($"无法连接到通道 {task.ChannelId}，跳过采集任务");
                         return;
                     }
+                    
+                    _logger.LogDebug($"通道 {task.ChannelId} 连接成功，开始准备采集地址");
                     
                     try
                     {
@@ -284,10 +317,14 @@ namespace Wombat.CommGateway.Application.Services
 
                         }
                         
+                        _logger.LogInformation($"通道 {task.ChannelId} 准备读取 {addresses.Count} 个地址，映射到 {pointAddresses.Count} 个点位");
+                        
                         // 批量读取数据
                         var result = await client.BatchReadAsync(addresses);
                         if (result.IsSuccess)
                         {
+                            _logger.LogInformation($"通道 {task.ChannelId} 批量读取成功，共 {addresses.Count} 个地址");
+                            
                             // 处理读取结果
                             Dictionary<int, (string Value, DataPointStatus Status)> updates = new Dictionary<int, (string, DataPointStatus)>();
                             
@@ -298,20 +335,26 @@ namespace Wombat.CommGateway.Application.Services
                                     var (dataType, rawValue) = tuple;
                                     var value = rawValue?.ToString() ?? string.Empty;
                                     updates[pointId] = (value, DataPointStatus.Good);
+                                    
+                                    _logger.LogInformation($"点位 {pointId} (地址: {address}) 读取成功: {value}");
                                 }
                                 else
                                 {
                                     updates[pointId] = (string.Empty, DataPointStatus.Bad);
+                                    _logger.LogWarning($"点位 {pointId} (地址: {address}) 读取失败 - 未在结果中找到");
                                 }
                             }
                             
-                            // 更新缓存
-                           _cacheManager.BatchUpdateCache(updates);
+                            _logger.LogInformation($"通道 {task.ChannelId} 开始更新缓存，共 {updates.Count} 个点位更新");
+                            
+                            // 更新缓存 - 使用强制通知确保推送
+                            _cacheManager.BatchUpdateCache(updates, forceNotify: true);
+                            _logger.LogInformation($"通道 {task.ChannelId} 采集完成，已更新 {updates.Count} 个点位的缓存并强制推送");
                             
                         }
                         else
                         {
-                            _logger.LogWarning($"批量读取失败: {result.Message}");
+                            _logger.LogWarning($"通道 {task.ChannelId} 批量读取失败: {result.Message}");
                             
                             // 更新点位状态为错误
                             Dictionary<int, (string Value, DataPointStatus Status)> updates = new Dictionary<int, (string, DataPointStatus)>();
@@ -319,13 +362,16 @@ namespace Wombat.CommGateway.Application.Services
                             {
                                 updates[point.PointId] = (string.Empty, DataPointStatus.Bad);
                             }
-                          _cacheManager.BatchUpdateCache(updates);
+                            
+                            _logger.LogInformation($"通道 {task.ChannelId} 将 {updates.Count} 个点位状态设为错误并强制推送");
+                          _cacheManager.BatchUpdateCache(updates, forceNotify: true);
                         }
                     }
                     finally
                     {
                         // 释放连接回连接池
                         _connectionPoolManager.ReleaseConnection(task.ChannelId, client);
+                        _logger.LogDebug($"通道 {task.ChannelId} 连接已释放回连接池");
                     }
                 }
             }
@@ -778,13 +824,23 @@ namespace Wombat.CommGateway.Application.Services
                     {
                         return;
                     }
+                    
+                    // 更新点位与设备的层级关系
+                    _subscriptionManager.UpdatePointHierarchy(point.Id, point.DeviceId);
+                    _logger.LogDebug($"已更新点位 {point.Id} 与设备 {point.DeviceId} 的层级关系");
+                    
+                    // 确保点位有正确的设备导航属性，这样调度器就能获取到ChannelId
+                    if (point.Device == null)
+                    {
+                        point.Device = device;
+                    }
                 }
 
                 // 注册点位到调度器
                 var registered = await _timeWheelScheduler.RegisterPointAsync(point);
                 if (registered)
                 {
-                    _logger.LogInformation($"点位 {point.Id} 已成功注册到调度器");
+                    _logger.LogInformation($"点位 {point.Id} 已成功注册到调度器，通道 {point.Device?.ChannelId}");
                 }
                 else
                 {
@@ -857,6 +913,10 @@ namespace Wombat.CommGateway.Application.Services
                     _logger.LogInformation($"点位 {pointId} 在调度器中不存在或注销失败");
                 }
 
+                // 从层级关系缓存中移除点位
+                _subscriptionManager.RemovePointHierarchy(pointId);
+                _logger.LogDebug($"已从层级关系缓存中移除点位 {pointId}");
+
                 // 清理缓存中的点位数据
                 _cacheManager.RemoveFromCache(pointId);
             }
@@ -888,10 +948,16 @@ namespace Wombat.CommGateway.Application.Services
                             var device = await deviceRepository.GetByIdAsync(point.DeviceId);
                             if (device != null && device.Enable)
                             {
+                                // 确保点位有正确的设备导航属性，这样调度器就能获取到ChannelId
+                                if (point.Device == null)
+                                {
+                                    point.Device = device;
+                                }
+                                
                                 var registered = await _timeWheelScheduler.RegisterPointAsync(point);
                                 if (registered)
                                 {
-                                    _logger.LogInformation($"点位 {pointId} 已启用并注册到调度器");
+                                    _logger.LogInformation($"点位 {pointId} 已启用并注册到调度器，通道 {device.ChannelId}");
                                 }
                                 else
                                 {
@@ -937,8 +1003,14 @@ namespace Wombat.CommGateway.Application.Services
                 _logger.LogInformation($"收到批量点位导入通知: 共 {points.Length} 个点位");
                 
                 var registeredCount = 0;
+                var hierarchyUpdateCount = 0;
+                
                 foreach (var point in points)
                 {
+                    // 更新点位与设备的层级关系
+                    _subscriptionManager.UpdatePointHierarchy(point.Id, point.DeviceId);
+                    hierarchyUpdateCount++;
+                    
                     if (point.Enable)
                     {
                         // 检查设备是否启用
@@ -949,6 +1021,12 @@ namespace Wombat.CommGateway.Application.Services
                             
                             if (device != null && device.Enable)
                             {
+                                // 确保点位有正确的设备导航属性，这样调度器就能获取到ChannelId
+                                if (point.Device == null)
+                                {
+                                    point.Device = device;
+                                }
+                                
                                 var registered = await _timeWheelScheduler.RegisterPointAsync(point);
                                 if (registered)
                                 {
@@ -959,7 +1037,7 @@ namespace Wombat.CommGateway.Application.Services
                     }
                 }
                 
-                _logger.LogInformation($"批量导入完成: 成功注册 {registeredCount} 个点位到调度器");
+                _logger.LogInformation($"批量导入完成: 成功注册 {registeredCount} 个点位到调度器，更新 {hierarchyUpdateCount} 个点位的层级关系");
             }
             catch (Exception ex)
             {

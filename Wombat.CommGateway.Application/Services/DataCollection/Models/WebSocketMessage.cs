@@ -41,22 +41,24 @@ namespace Wombat.CommGateway.Application.Services.DataCollection.Models
         /// <summary>
         /// 创建订阅确认消息
         /// </summary>
-        public static WebSocketMessage CreateSubscriptionConfirmed(string target, int id)
+        public static WebSocketMessage CreateSubscriptionConfirmed(string target, int id, string connectionId)
             => new()
             {
                 Type = "subscription_confirmed",
                 Data = new { target, id },
+                ConnectionId = connectionId,
                 Timestamp = DateTime.UtcNow
             };
 
         /// <summary>
         /// 创建取消订阅确认消息
         /// </summary>
-        public static WebSocketMessage CreateUnsubscriptionConfirmed(string target, int id)
+        public static WebSocketMessage CreateUnsubscriptionConfirmed(string target, int id, string connectionId)
             => new()
             {
                 Type = "unsubscription_confirmed",
                 Data = new { target, id },
+                ConnectionId = connectionId,
                 Timestamp = DateTime.UtcNow
             };
 

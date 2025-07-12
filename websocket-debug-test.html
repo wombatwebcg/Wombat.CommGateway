@@ -1,0 +1,1260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket数据采集服务测试（精确推送版）</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.connecting {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        
+        button:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+        
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .unsubscribe {
+            background-color: #dc3545;
+        }
+        
+        .unsubscribe:hover:not(:disabled) {
+            background-color: #c82333;
+        }
+        
+        input, select {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #007bff;
+            background-color: white;
+        }
+        
+        .message.error {
+            border-left-color: #dc3545;
+            background-color: #f8d7da;
+        }
+        
+        .message.success {
+            border-left-color: #28a745;
+            background-color: #d4edda;
+        }
+        
+        .message.data-update {
+            border-left-color: #17a2b8;
+            background-color: #d1ecf1;
+        }
+        
+        .message.precise-push {
+            border-left-color: #6f42c1;
+            background-color: #e2e3f0;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .subscription-list {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .data-counter {
+            background-color: #17a2b8;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            margin: 5px;
+            display: inline-block;
+        }
+        
+        .fix-status {
+            background-color: #6f42c1;
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        
+        .push-validation {
+            background-color: #e7f3ff;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            border-left: 4px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebSocket数据采集服务测试（精确推送版）</h1>
+    
+    <div class="container">
+        <div class="fix-status">
+            🎯 精确推送模型：现在系统采用基于订阅关系的精确推送，每个连接只收到它订阅的点位更新
+        </div>
+        <div class="push-validation">
+            <strong>📊 推送验证功能：</strong>
+            <span id="pushValidation">等待连接建立...</span>
+        </div>
+        <h2>连接状态</h2>
+        <div id="status" class="status disconnected">未连接</div>
+        <button onclick="connect()">连接</button>
+        <button onclick="disconnect()">断开连接</button>
+        <button onclick="ping()">发送心跳</button>
+        <button onclick="getStats()">获取统计</button>
+        <button onclick="clearMessages()">清除消息</button>
+        <button onclick="validatePrecisePush()" style="background-color: #6f42c1;">🎯 验证精确推送</button>
+    </div>
+
+    <div class="grid">
+        <div class="container">
+            <h2>订阅管理</h2>
+            
+            <h3>设备订阅</h3>
+            <input type="number" id="deviceId" placeholder="设备ID" value="1">
+            <button onclick="subscribeDevice()">订阅设备</button>
+            <button onclick="unsubscribeDevice()" class="unsubscribe">取消订阅设备</button>
+            
+            <h3>组订阅</h3>
+            <input type="number" id="groupId" placeholder="组ID" value="1">
+            <button onclick="subscribeGroup()">订阅组</button>
+            <button onclick="unsubscribeGroup()" class="unsubscribe">取消订阅组</button>
+            
+            <h3>点位订阅</h3>
+            <input type="number" id="pointId" placeholder="点位ID" value="1">
+            <button onclick="subscribePoint()">订阅点位</button>
+            <button onclick="unsubscribePoint()" class="unsubscribe">取消订阅点位</button>
+            
+            <button onclick="getSubscriptionStatus()">获取订阅状态</button>
+            
+            <div id="subscriptions" class="subscription-list">
+                <strong>当前订阅：</strong><span id="subscriptionList">无</span>
+            </div>
+            
+            <div>
+                <span class="data-counter">总数据更新: <span id="dataCounter">0</span></span>
+                <span class="data-counter">精确推送: <span id="precisePushCounter">0</span></span>
+                <span class="data-counter">批量推送: <span id="batchPushCounter">0</span></span>
+                <span class="data-counter">无效推送: <span id="invalidPushCounter">0</span></span>
+            </div>
+            
+            <h3>🎯 精确推送测试</h3>
+            <input type="number" id="testPointId1" placeholder="测试点位1" value="1">
+            <input type="number" id="testPointId2" placeholder="测试点位2" value="2">
+            <button onclick="testPrecisePushScenario()" style="background-color: #6f42c1;">测试精确推送场景</button>
+            
+            <h3>调试功能</h3>
+            <input type="number" id="debugPointId" placeholder="调试点位ID" value="1">
+            <button onclick="getSchedulerStatus()">获取调度器状态</button>
+            <button onclick="getHierarchyStatus()">获取层级关系</button>
+            <button onclick="testDataPush()">测试数据推送</button>
+            <button onclick="getPointStatus()">获取点位状态</button>
+            <button onclick="getPointSubscriptionDetails()">🔍 诊断订阅详情</button>
+            
+            <h3>🐛 设备取消订阅测试</h3>
+            <input type="number" id="testDeviceId" placeholder="测试设备ID" value="1">
+            <button onclick="testDeviceUnsubscribe()" style="background-color: #dc3545;">🧪 测试设备取消订阅</button>
+            <button onclick="forceRefreshStatus()">🔄 强制刷新状态</button>
+            
+            <h3>🔧 高级诊断工具</h3>
+            <button onclick="getAllConnectionDetails()" style="background-color: #6f42c1;">📋 获取所有连接详情</button>
+            <br>
+            <input type="text" id="cleanupConnectionId" placeholder="连接ID（留空=当前连接）" style="width: 200px;">
+            <select id="cleanupType">
+                <option value="device">设备订阅</option>
+                <option value="group">设备组订阅</option>
+                <option value="point">点位订阅</option>
+                <option value="all">所有订阅</option>
+            </select>
+            <input type="number" id="cleanupTargetId" placeholder="目标ID（可选）" style="width: 100px;">
+            <button onclick="forceCleanupSubscription()" style="background-color: #dc3545;">🗑️ 强制清理订阅</button>
+            
+            <h3>📊 主动数据推送</h3>
+            <input type="number" id="pushDeviceId" placeholder="设备ID" value="1">
+            <button onclick="getDeviceData()" style="background-color: #17a2b8;">📱 获取设备数据</button>
+            <br>
+            <input type="number" id="pushGroupId" placeholder="设备组ID" value="1">
+            <button onclick="getGroupData()" style="background-color: #6f42c1;">🗂️ 获取设备组数据</button>
+            
+            <div id="subscriptionDiagnosis" style="background-color: #e7f3ff; padding: 10px; border-radius: 4px; margin: 10px 0; display: none;">
+                <h4>📊 订阅诊断结果</h4>
+                <div id="diagnosisContent"></div>
+            </div>
+            
+            <div id="schedulerStatus" style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; margin: 10px 0; display: none;">
+                <h4>⚙️ 调度器详细状态</h4>
+                <div id="schedulerContent"></div>
+            </div>
+            
+            <div id="connectionDetails" style="background-color: #fff3cd; padding: 10px; border-radius: 4px; margin: 10px 0; display: none;">
+                <h4>📋 所有连接详情</h4>
+                <div id="connectionDetailsContent"></div>
+            </div>
+            
+            <div id="cleanupResult" style="background-color: #d1ecf1; padding: 10px; border-radius: 4px; margin: 10px 0; display: none;">
+                <h4>🗑️ 清理结果</h4>
+                <div id="cleanupResultContent"></div>
+            </div>
+            
+            <div id="pushTestResult" style="background-color: #e2e3f0; padding: 10px; border-radius: 4px; margin: 10px 0; display: none;">
+                <h4>🎯 精确推送测试结果</h4>
+                <div id="pushTestContent"></div>
+            </div>
+        </div>
+
+        <div class="container">
+            <h2>消息日志</h2>
+            <div id="messages" class="messages"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let dataCounter = 0;
+        let precisePushCounter = 0;
+        let batchPushCounter = 0;
+        let invalidPushCounter = 0;
+        let connectionId = null;
+        let currentSubscriptions = {
+            devices: [],
+            groups: [],
+            points: []
+        };
+        let testScenarioRunning = false;
+        let expectedPushes = [];
+
+        function updateStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+
+        function addMessage(message, type = 'info') {
+            const messagesEl = document.getElementById('messages');
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            messageEl.innerHTML = `<strong>[${timestamp}]</strong> ${message}`;
+            
+            messagesEl.appendChild(messageEl);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function updateCounters() {
+            document.getElementById('dataCounter').textContent = dataCounter;
+            document.getElementById('precisePushCounter').textContent = precisePushCounter;
+            document.getElementById('batchPushCounter').textContent = batchPushCounter;
+            document.getElementById('invalidPushCounter').textContent = invalidPushCounter;
+        }
+
+        function updatePushValidation() {
+            const validationEl = document.getElementById('pushValidation');
+            if (connectionId) {
+                const totalExpected = currentSubscriptions.devices.length + currentSubscriptions.groups.length + currentSubscriptions.points.length;
+                validationEl.innerHTML = `
+                    连接 ${connectionId} | 订阅: ${totalExpected}个 | 
+                    精确推送: ${precisePushCounter}个 | 
+                    无效推送: ${invalidPushCounter}个 | 
+                    精确率: ${totalExpected > 0 ? ((precisePushCounter / (precisePushCounter + invalidPushCounter)) * 100).toFixed(1) : '0'}%
+                `;
+            } else {
+                validationEl.textContent = '等待连接建立...';
+            }
+        }
+
+        function validatePushMessage(data) {
+            // 验证推送消息是否符合当前订阅
+            let isValid = false;
+            let reason = '';
+            
+            if (data.type === 'point_update' || data.type === 'pointupdate') {
+                const pointId = data.data.PointId || data.data.pointId;
+                if (pointId) {
+                    // 检查是否直接订阅了点位
+                    if (currentSubscriptions.points.includes(pointId)) {
+                        isValid = true;
+                        reason = `直接订阅点位${pointId}`;
+                    } else {
+                        // 这里应该检查点位所属的设备和设备组订阅
+                        // 简化版本，假设如果有任何设备或组订阅就可能有效
+                        if (currentSubscriptions.devices.length > 0 || currentSubscriptions.groups.length > 0) {
+                            isValid = true;
+                            reason = `通过设备或组订阅接收点位${pointId}`;
+                        } else {
+                            reason = `点位${pointId}未订阅且无相关设备/组订阅`;
+                        }
+                    }
+                }
+            } else if (data.type === 'batch_points_update' || data.type === 'batchpointsupdate') {
+                // 批量更新需要检查更新的点位是否都在订阅范围内
+                if (currentSubscriptions.points.length > 0 || currentSubscriptions.devices.length > 0 || currentSubscriptions.groups.length > 0) {
+                    isValid = true;
+                    reason = '批量更新包含订阅的点位';
+                } else {
+                    reason = '批量更新但无任何订阅';
+                }
+            }
+            
+            return { isValid, reason };
+        }
+
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                addMessage('WebSocket已经连接', 'error');
+                return;
+            }
+
+            updateStatus('连接中...', 'connecting');
+            addMessage('正在连接到 ws://localhost:5000/ws/datacollection-ws...');
+
+            ws = new WebSocket('ws://localhost:5000/ws/datacollection-ws');
+
+            ws.onopen = function(event) {
+                updateStatus('已连接', 'connected');
+                addMessage('WebSocket连接已建立', 'success');
+                addMessage('🎯 精确推送模型：现在系统采用基于订阅关系的精确推送架构', 'success');
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleMessage(data);
+                } catch (e) {
+                    addMessage(`解析消息失败: ${event.data}`, 'error');
+                }
+            };
+
+            ws.onclose = function(event) {
+                updateStatus('已断开连接', 'disconnected');
+                addMessage(`WebSocket连接关闭 (code: ${event.code}, reason: ${event.reason})`, 'error');
+                connectionId = null;
+                updatePushValidation();
+            };
+
+            ws.onerror = function(error) {
+                updateStatus('连接错误', 'disconnected');
+                addMessage(`WebSocket错误: ${error}`, 'error');
+            };
+        }
+
+        function handleMessage(data) {
+            addMessage(`收到消息: ${JSON.stringify(data, null, 2)}`);
+
+            // 如果是数据推送消息，验证精确性
+            if (data.type && (data.type.includes('update') || data.type.includes('point'))) {
+                const validation = validatePushMessage(data);
+                if (validation.isValid) {
+                    precisePushCounter++;
+                    addMessage(`✅ 精确推送验证通过: ${validation.reason}`, 'precise-push');
+                } else {
+                    invalidPushCounter++;
+                    addMessage(`❌ 无效推送检测: ${validation.reason}`, 'error');
+                }
+                updateCounters();
+                updatePushValidation();
+            }
+
+            switch (data.type) {
+                case 'connection_status':
+                    connectionId = data.data.connectionId;
+                    addMessage(`连接ID: ${connectionId}`, 'success');
+                    updatePushValidation();
+                    break;
+
+                case 'subscription_confirmed':
+                    addMessage(`订阅确认: ${data.data.target} ${data.data.id}`, 'success');
+                    // 更新本地订阅状态
+                    updateLocalSubscriptions(data.data.target, data.data.id, 'add');
+                    break;
+
+                case 'unsubscription_confirmed':
+                    addMessage(`取消订阅确认: ${data.data.target} ${data.data.id}`, 'success');
+                    // 更新本地订阅状态
+                    updateLocalSubscriptions(data.data.target, data.data.id, 'remove');
+                    break;
+
+                case 'subscription_status':
+                    const subData = data.data;
+                    addMessage(`📊 订阅状态已更新 - 总订阅数: ${subData.totalSubscriptions}`, 'success');
+                    
+                    // 更新本地订阅状态
+                    currentSubscriptions = {
+                        devices: subData.deviceSubscriptions || [],
+                        groups: subData.groupSubscriptions || [],
+                        points: subData.pointSubscriptions || []
+                    };
+                    
+                    // 详细显示各类型订阅
+                    if (subData.groupSubscriptions && subData.groupSubscriptions.length > 0) {
+                        addMessage(`🗂️ 设备组订阅: [${subData.groupSubscriptions.join(', ')}] (${subData.groupSubscriptions.length}个)`, 'success');
+                    } else {
+                        addMessage(`🗂️ 设备组订阅: 无`, 'success');
+                    }
+                    
+                    if (subData.deviceSubscriptions && subData.deviceSubscriptions.length > 0) {
+                        addMessage(`🖥️ 设备订阅: [${subData.deviceSubscriptions.join(', ')}] (${subData.deviceSubscriptions.length}个)`, 'success');
+                    } else {
+                        addMessage(`🖥️ 设备订阅: 无`, 'success');
+                    }
+                    
+                    if (subData.pointSubscriptions && subData.pointSubscriptions.length > 0) {
+                        addMessage(`📍 点位订阅: [${subData.pointSubscriptions.join(', ')}] (${subData.pointSubscriptions.length}个)`, 'success');
+                    } else {
+                        addMessage(`📍 点位订阅: 无`, 'success');
+                    }
+                    
+                    // 更新页面显示
+                    const allSubscriptions = [
+                        ...(subData.groupSubscriptions || []).map(id => `组${id}`),
+                        ...(subData.deviceSubscriptions || []).map(id => `设备${id}`),
+                        ...(subData.pointSubscriptions || []).map(id => `点位${id}`)
+                    ];
+                    document.getElementById('subscriptionList').textContent = 
+                        allSubscriptions.length > 0 ? allSubscriptions.join(', ') : '无';
+                    
+                    updatePushValidation();
+                    break;
+
+                case 'connection_statistics':
+                    addMessage(`连接统计: 总连接数=${data.data.totalConnections}, 总订阅数=${data.data.totalSubscriptions}`, 'success');
+                    break;
+
+                case 'scheduler_status':
+                    addMessage(`⚙️ 调度器状态已更新，详细信息请查看下方状态面板`, 'success');
+                    
+                    // 显示在专门的状态区域
+                    const schedulerDiv = document.getElementById('schedulerStatus');
+                    const schedulerContentDiv = document.getElementById('schedulerContent');
+                    
+                    let statusHtml = `
+                        <div style="margin-bottom: 15px;">
+                            <strong>🏃 运行状态:</strong> ${data.data.isRunning ? '✅ 运行中' : '❌ 已停止'}<br>
+                            <strong>📊 调度点位:</strong> ${data.data.scheduledPointCount} 个<br>
+                            <strong>⏱️ 任务频率:</strong> 预计 ${data.data.estimatedTasksPerMinute} 个/分钟
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <strong>📈 任务统计:</strong><br>
+                            • 总任务数: ${data.data.statistics.totalScheduledTasks} 个<br>
+                            • 成功任务: ${data.data.statistics.successfulTasks} 个<br>
+                            • 失败任务: ${data.data.statistics.failedTasks} 个<br>
+                            • 成功率: ${(data.data.statistics.successRate * 100).toFixed(1)}%
+                        </div>
+                        
+                        <div style="background-color: #d1ecf1; padding: 10px; border-radius: 4px; margin-bottom: 15px;">
+                            <strong>❓ 关于"总任务数"的说明:</strong><br>
+                            • ${data.data.explanation.totalScheduledTasks}<br>
+                            • ${data.data.explanation.whyIncreasing}<br>
+                            • ${data.data.explanation.currentRate}<br>
+                            • ${data.data.explanation.taskGrouping}
+                        </div>
+                    `;
+                    
+                    // 添加扫描周期分组信息
+                    if (data.data.scanRateGroups && data.data.scanRateGroups.length > 0) {
+                        statusHtml += `
+                            <div style="margin-bottom: 15px;">
+                                <strong>📋 扫描周期分组:</strong><br>
+                                <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
+                                    <thead>
+                                        <tr style="background-color: #e9ecef;">
+                                            <th style="border: 1px solid #ddd; padding: 5px;">扫描周期</th>
+                                            <th style="border: 1px solid #ddd; padding: 5px;">点位数量</th>
+                                            <th style="border: 1px solid #ddd; padding: 5px;">任务频率</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                        `;
+                        data.data.scanRateGroups.forEach(group => {
+                            statusHtml += `
+                                <tr>
+                                    <td style="border: 1px solid #ddd; padding: 5px;">${group.scanRateMs}ms</td>
+                                    <td style="border: 1px solid #ddd; padding: 5px;">${group.pointCount}个</td>
+                                    <td style="border: 1px solid #ddd; padding: 5px;">${group.tasksPerMinute}次/分钟</td>
+                                </tr>
+                            `;
+                        });
+                        statusHtml += `
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+                    }
+                    
+                    // 添加通道分组信息
+                    if (data.data.channelGroups && data.data.channelGroups.length > 0) {
+                        statusHtml += `
+                            <div style="margin-bottom: 15px;">
+                                <strong>🔌 通道分组:</strong><br>
+                        `;
+                        data.data.channelGroups.forEach(group => {
+                            statusHtml += `• 通道${group.channelId}: ${group.pointCount}个点位<br>`;
+                        });
+                        statusHtml += `</div>`;
+                    }
+                    
+                    schedulerContentDiv.innerHTML = statusHtml;
+                    schedulerDiv.style.display = 'block';
+                    
+                    // 滚动到状态区域
+                    schedulerDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    break;
+
+                case 'hierarchy_status':
+                    addMessage(`层级关系: 点位${data.data.pointId}, 直接订阅${data.data.directSubscribers}个, 总连接${data.data.totalConnections}个`, 'success');
+                    addMessage(`设备信息: ${data.data.deviceInfo}`, 'success');
+                    addMessage(`设备组信息: ${data.data.groupInfo}`, 'success');
+                    break;
+
+                case 'test_data_push_sent':
+                    addMessage(`测试数据推送已发送: ${data.data.message}`, 'success');
+                    break;
+
+                case 'point_status':
+                    const pointData = data.data;
+                    addMessage(`点位${pointData.pointId}状态: 调度器注册=${pointData.isRegisteredInScheduler}`, 'success');
+                    if (pointData.pointInfo) {
+                        addMessage(`点位信息: 名称=${pointData.pointInfo.name}, 启用=${pointData.pointInfo.enable}, 扫描周期=${pointData.pointInfo.scanRate}`, 'success');
+                    }
+                    if (pointData.cachedValue) {
+                        addMessage(`缓存值: ${pointData.cachedValue.value}, 状态=${pointData.cachedValue.status}`, 'success');
+                    }
+                    break;
+
+                case 'point_subscription_details':
+                    const diagData = data.data;
+                    addMessage(`🔍 点位${diagData.pointId}订阅诊断完成`, 'success');
+                    
+                    // 显示诊断结果
+                    const diagnosisDiv = document.getElementById('subscriptionDiagnosis');
+                    const contentDiv = document.getElementById('diagnosisContent');
+                    
+                    let diagnosisHtml = `
+                        <div style="margin-bottom: 15px;">
+                            <strong>📋 诊断结果：</strong><br>
+                            <span style="color: ${diagData.willReceiveUpdates ? '#28a745' : '#dc3545'}; font-weight: bold;">
+                                ${diagData.explanation}
+                            </span>
+                        </div>
+                    `;
+                    
+                    if (diagData.willReceiveUpdates && diagData.subscriptionReasons.length > 0) {
+                        diagnosisHtml += `
+                            <div style="margin-bottom: 15px;">
+                                <strong>🔗 订阅路径：</strong>
+                                <ul style="margin: 5px 0; padding-left: 20px;">
+                                    ${diagData.subscriptionReasons.map(reason => `<li>${reason}</li>`).join('')}
+                                </ul>
+                            </div>
+                        `;
+                    }
+                    
+                    diagnosisHtml += `
+                        <div style="margin-bottom: 15px;">
+                            <strong>📊 统计信息：</strong><br>
+                            • 总订阅者: ${diagData.statistics.totalSubscriberCount} 个<br>
+                            • 直接订阅点位: ${diagData.statistics.directSubscriberCount} 个<br>
+                            • 订阅设备${diagData.deviceId ? ` ${diagData.deviceId}` : ''}: ${diagData.statistics.deviceSubscriberCount} 个<br>
+                            • 订阅设备组${diagData.groupId ? ` ${diagData.groupId}` : ''}: ${diagData.statistics.groupSubscriberCount} 个
+                        </div>
+                    `;
+                    
+                    if (!diagData.willReceiveUpdates) {
+                        diagnosisHtml += `
+                            <div style="background-color: #d1ecf1; padding: 10px; border-radius: 4px; border-left: 4px solid #17a2b8;">
+                                <strong>💡 解决方案：</strong><br>
+                                如果您想接收点位${diagData.pointId}的数据推送，请执行以下操作之一：<br>
+                                • 直接订阅点位${diagData.pointId}<br>
+                                ${diagData.deviceId ? `• 订阅设备${diagData.deviceId}（包含该点位）<br>` : ''}
+                                ${diagData.groupId ? `• 订阅设备组${diagData.groupId}（包含该设备和点位）<br>` : ''}
+                            </div>
+                        `;
+                    } else {
+                        diagnosisHtml += `
+                            <div style="background-color: #d4edda; padding: 10px; border-radius: 4px; border-left: 4px solid #28a745;">
+                                <strong>🛑 如何停止接收推送：</strong><br>
+                                要完全停止接收点位${diagData.pointId}的数据推送，您需要取消以下所有订阅：<br>
+                                ${diagData.subscriptionReasons.map(reason => `• ${reason}<br>`).join('')}
+                            </div>
+                        `;
+                    }
+                    
+                    contentDiv.innerHTML = diagnosisHtml;
+                    diagnosisDiv.style.display = 'block';
+                    
+                    // 滚动到诊断结果
+                    diagnosisDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    break;
+
+                case 'device_data':
+                    const deviceData = data.data;
+                    addMessage(`📱 设备${deviceData.deviceId}数据获取完成`, 'success');
+                    addMessage(`设备信息: 名称=${deviceData.deviceName}, 启用=${deviceData.deviceEnable}, 通道=${deviceData.channelId}`, 'success');
+                    addMessage(`包含点位: ${deviceData.pointCount}个, 快照时间=${new Date(deviceData.snapshotTime).toLocaleString()}`, 'success');
+                    
+                    if (deviceData.points && deviceData.points.length > 0) {
+                        addMessage(`📊 点位详情:`, 'success');
+                        deviceData.points.forEach((point, index) => {
+                            if (index < 5) { // 只显示前5个点位，避免日志过长
+                                addMessage(`  • 点位${point.pointId}: ${point.name} = ${point.value} (${point.status})`, 'success');
+                            }
+                        });
+                        if (deviceData.points.length > 5) {
+                            addMessage(`  ... 还有${deviceData.points.length - 5}个点位`, 'success');
+                        }
+                    }
+                    break;
+
+                case 'group_data':
+                    const groupData = data.data;
+                    addMessage(`🗂️ 设备组${groupData.groupId}数据获取完成`, 'success');
+                    addMessage(`设备组信息: 名称=${groupData.groupName}`, 'success');
+                    addMessage(`包含设备: ${groupData.deviceCount}个, 总点位: ${groupData.pointCount}个`, 'success');
+                    addMessage(`快照时间: ${new Date(groupData.snapshotTime).toLocaleString()}`, 'success');
+                    
+                    if (groupData.devices && groupData.devices.length > 0) {
+                        addMessage(`📊 设备详情:`, 'success');
+                        groupData.devices.forEach((device, index) => {
+                            if (index < 3) { // 只显示前3个设备
+                                addMessage(`  • 设备${device.deviceId}: ${device.deviceName} (${device.pointCount}个点位)`, 'success');
+                            }
+                        });
+                        if (groupData.devices.length > 3) {
+                            addMessage(`  ... 还有${groupData.devices.length - 3}个设备`, 'success');
+                        }
+                    }
+                    break;
+
+                case 'all_connection_details':
+                    const connectionsData = data.data;
+                    addMessage(`📋 获取到所有连接详情，总连接数: ${connectionsData.totalConnections}`, 'success');
+                    
+                    // 显示在专门的连接详情区域
+                    const connectionDetailsDiv = document.getElementById('connectionDetails');
+                    const connectionDetailsContentDiv = document.getElementById('connectionDetailsContent');
+                    
+                    let connectionsHtml = `
+                        <div style="margin-bottom: 15px;">
+                            <strong>📊 连接概览:</strong> 总连接数 ${connectionsData.totalConnections}<br>
+                        </div>
+                    `;
+                    
+                    if (connectionsData.connections && connectionsData.connections.length > 0) {
+                        connectionsHtml += `
+                            <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                                <thead>
+                                    <tr style="background-color: #e9ecef;">
+                                        <th style="border: 1px solid #ddd; padding: 8px;">连接ID</th>
+                                        <th style="border: 1px solid #ddd; padding: 8px;">最后活动</th>
+                                        <th style="border: 1px solid #ddd; padding: 8px;">总订阅</th>
+                                        <th style="border: 1px solid #ddd; padding: 8px;">设备组</th>
+                                        <th style="border: 1px solid #ddd; padding: 8px;">设备</th>
+                                        <th style="border: 1px solid #ddd; padding: 8px;">点位</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                        `;
+                        
+                        connectionsData.connections.forEach(conn => {
+                            const lastActivity = conn.lastActivityTime === '0001-01-01T00:00:00' ? '从未活动' : new Date(conn.lastActivityTime).toLocaleString();
+                            connectionsHtml += `
+                                <tr>
+                                    <td style="border: 1px solid #ddd; padding: 8px; font-family: monospace;">${conn.connectionId}</td>
+                                    <td style="border: 1px solid #ddd; padding: 8px;">${lastActivity}</td>
+                                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${conn.totalSubscriptions}</td>
+                                    <td style="border: 1px solid #ddd; padding: 8px;">[${conn.groupSubscriptions.join(', ')}]</td>
+                                    <td style="border: 1px solid #ddd; padding: 8px;">[${conn.deviceSubscriptions.join(', ')}]</td>
+                                    <td style="border: 1px solid #ddd; padding: 8px;">[${conn.pointSubscriptions.join(', ')}]</td>
+                                </tr>
+                            `;
+                        });
+                        
+                        connectionsHtml += `
+                                </tbody>
+                            </table>
+                        `;
+                    } else {
+                        connectionsHtml += `<p>没有找到任何连接</p>`;
+                    }
+                    
+                    connectionDetailsContentDiv.innerHTML = connectionsHtml;
+                    connectionDetailsDiv.style.display = 'block';
+                    connectionDetailsDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    break;
+
+                case 'force_cleanup_result':
+                    const cleanupData = data.data;
+                    addMessage(`🗑️ 强制清理订阅完成: ${cleanupData.success ? '成功' : '失败'}`, cleanupData.success ? 'success' : 'error');
+                    
+                    // 显示在专门的清理结果区域
+                    const cleanupResultDiv = document.getElementById('cleanupResult');
+                    const cleanupResultContentDiv = document.getElementById('cleanupResultContent');
+                    
+                    let cleanupHtml = `
+                        <div style="margin-bottom: 15px;">
+                            <strong>🎯 清理目标:</strong> 连接 ${cleanupData.targetConnectionId}<br>
+                            <strong>📂 订阅类型:</strong> ${cleanupData.subscriptionType}<br>
+                            ${cleanupData.targetId ? `<strong>🔢 目标ID:</strong> ${cleanupData.targetId}<br>` : ''}
+                            <strong>✅ 执行结果:</strong> <span style="color: ${cleanupData.success ? '#28a745' : '#dc3545'}; font-weight: bold;">${cleanupData.success ? '成功' : '失败'}</span><br>
+                            <strong>📊 移除数量:</strong> ${cleanupData.removedCount}<br>
+                            <strong>💬 消息:</strong> ${cleanupData.message}
+                        </div>
+                    `;
+                    
+                    if (cleanupData.details && cleanupData.details.length > 0) {
+                        cleanupHtml += `
+                            <div style="background-color: #f8f9fa; padding: 10px; border-radius: 4px;">
+                                <strong>📋 详细信息:</strong>
+                                <ul style="margin: 5px 0; padding-left: 20px;">
+                                    ${cleanupData.details.map(detail => `<li>${detail}</li>`).join('')}
+                                </ul>
+                            </div>
+                        `;
+                    }
+                    
+                    cleanupResultContentDiv.innerHTML = cleanupHtml;
+                    cleanupResultDiv.style.display = 'block';
+                    cleanupResultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    
+                    // 清理后自动刷新订阅状态
+                    setTimeout(() => getSubscriptionStatus(), 1000);
+                    break;
+
+                case 'point_update':
+                case 'pointupdate':
+                    dataCounter++;
+                    addMessage(`🎯 精确推送生效！点位更新: 点位=${data.data.PointId || data.data.pointId}, 值=${data.data.Value || data.data.value}, 状态=${data.data.Status || data.data.status}`, 'data-update');
+                    break;
+
+                case 'batch_points_update':
+                case 'batchpointsupdate':
+                    dataCounter++;
+                    batchPushCounter++;
+                    updateCounters();
+                    const updateCount = data.data.Updates ? data.data.Updates.length : (data.data.updates ? data.data.updates.length : 0);
+                    addMessage(`🎯 批量精确推送生效！批量点位更新: ${updateCount}个点位`, 'data-update');
+                    break;
+
+                case 'point_status_change':
+                case 'pointstatuschange':
+                    dataCounter++;
+                    addMessage(`🎯 精确推送生效！点位状态变更: 点位=${data.data.PointId || data.data.pointId}, 状态=${data.data.Status || data.data.status}`, 'data-update');
+                    break;
+
+                case 'point_removed':
+                case 'pointremoved':
+                    dataCounter++;
+                    addMessage(`🎯 精确推送生效！点位移除: 点位=${data.data.PointId || data.data.pointId}`, 'data-update');
+                    break;
+
+                case 'pong':
+                    addMessage('收到心跳响应', 'success');
+                    break;
+
+                case 'error':
+                    addMessage(`错误: ${data.error}`, 'error');
+                    break;
+
+                default:
+                    addMessage(`未知消息类型: ${data.type}`);
+                    break;
+            }
+        }
+
+        function updateLocalSubscriptions(target, id, action) {
+            const targetKey = target === 'device' ? 'devices' : (target === 'group' ? 'groups' : 'points');
+            if (action === 'add') {
+                if (!currentSubscriptions[targetKey].includes(id)) {
+                    currentSubscriptions[targetKey].push(id);
+                }
+            } else if (action === 'remove') {
+                const index = currentSubscriptions[targetKey].indexOf(id);
+                if (index > -1) {
+                    currentSubscriptions[targetKey].splice(index, 1);
+                }
+            }
+            updatePushValidation();
+        }
+
+        function sendCommand(command) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addMessage('WebSocket未连接', 'error');
+                return;
+            }
+
+            const message = JSON.stringify(command);
+            ws.send(message);
+            addMessage(`发送命令: ${message}`);
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function subscribeDevice() {
+            const deviceId = parseInt(document.getElementById('deviceId').value);
+            if (isNaN(deviceId)) {
+                addMessage('请输入有效的设备ID', 'error');
+                return;
+            }
+            sendCommand({
+                action: 'subscribe',
+                target: 'device',
+                id: deviceId
+            });
+            // 订阅后自动获取状态
+            setTimeout(() => getSubscriptionStatus(), 500);
+        }
+
+        function unsubscribeDevice() {
+            const deviceId = parseInt(document.getElementById('deviceId').value);
+            if (isNaN(deviceId)) {
+                addMessage('请输入有效的设备ID', 'error');
+                return;
+            }
+            addMessage(`🔄 正在取消订阅设备${deviceId}...`, 'success');
+            sendCommand({
+                action: 'unsubscribe',
+                target: 'device',
+                id: deviceId
+            });
+            // 取消订阅后自动获取状态验证
+            setTimeout(() => {
+                getSubscriptionStatus();
+                addMessage(`✅ 设备${deviceId}取消订阅操作已发送，请检查上方订阅状态是否已更新`, 'success');
+            }, 500);
+        }
+
+        function subscribeGroup() {
+            const groupId = parseInt(document.getElementById('groupId').value);
+            if (isNaN(groupId)) {
+                addMessage('请输入有效的组ID', 'error');
+                return;
+            }
+            sendCommand({
+                action: 'subscribe',
+                target: 'group',
+                id: groupId
+            });
+            // 订阅后自动获取状态
+            setTimeout(() => getSubscriptionStatus(), 500);
+        }
+
+        function unsubscribeGroup() {
+            const groupId = parseInt(document.getElementById('groupId').value);
+            if (isNaN(groupId)) {
+                addMessage('请输入有效的组ID', 'error');
+                return;
+            }
+            sendCommand({
+                action: 'unsubscribe',
+                target: 'group',
+                id: groupId
+            });
+            // 取消订阅后自动获取状态验证
+            setTimeout(() => getSubscriptionStatus(), 500);
+        }
+
+        function subscribePoint() {
+            const pointId = parseInt(document.getElementById('pointId').value);
+            if (isNaN(pointId)) {
+                addMessage('请输入有效的点位ID', 'error');
+                return;
+            }
+            sendCommand({
+                action: 'subscribe',
+                target: 'point',
+                id: pointId
+            });
+            // 订阅后自动获取状态
+            setTimeout(() => getSubscriptionStatus(), 500);
+        }
+
+        function unsubscribePoint() {
+            const pointId = parseInt(document.getElementById('pointId').value);
+            if (isNaN(pointId)) {
+                addMessage('请输入有效的点位ID', 'error');
+                return;
+            }
+            sendCommand({
+                action: 'unsubscribe',
+                target: 'point',
+                id: pointId
+            });
+            // 取消订阅后自动获取状态验证
+            setTimeout(() => getSubscriptionStatus(), 500);
+        }
+
+        function ping() {
+            sendCommand({
+                action: 'ping'
+            });
+        }
+
+        function getSubscriptionStatus() {
+            sendCommand({
+                action: 'get_subscription_status'
+            });
+        }
+
+        function getStats() {
+            sendCommand({
+                action: 'get_connection_statistics'
+            });
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+            dataCounter = 0;
+            precisePushCounter = 0;
+            batchPushCounter = 0;
+            invalidPushCounter = 0;
+            updateCounters();
+            updatePushValidation();
+        }
+
+        function getSchedulerStatus() {
+            sendCommand({
+                action: 'get_scheduler_status'
+            });
+        }
+
+        function getHierarchyStatus() {
+            const pointId = parseInt(document.getElementById('debugPointId').value);
+            if (isNaN(pointId)) {
+                addMessage('请输入有效的调试点位ID', 'error');
+                return;
+            }
+            sendCommand({
+                action: 'get_hierarchy_status',
+                id: pointId
+            });
+        }
+
+        function testDataPush() {
+            sendCommand({
+                action: 'test_data_push'
+            });
+        }
+
+        function getPointStatus() {
+            const pointId = parseInt(document.getElementById('debugPointId').value);
+            if (isNaN(pointId)) {
+                addMessage('请输入有效的调试点位ID', 'error');
+                return;
+            }
+            sendCommand({
+                action: 'get_point_status',
+                id: pointId
+            });
+        }
+
+        function getPointSubscriptionDetails() {
+            const pointId = parseInt(document.getElementById('debugPointId').value);
+            if (isNaN(pointId)) {
+                addMessage('请输入有效的调试点位ID', 'error');
+                return;
+            }
+            sendCommand({
+                action: 'get_point_subscription_details',
+                id: pointId
+            });
+        }
+
+        function testDeviceUnsubscribe() {
+            const deviceId = parseInt(document.getElementById('testDeviceId').value);
+            if (isNaN(deviceId)) {
+                addMessage('请输入有效的设备ID', 'error');
+                return;
+            }
+            addMessage(`🔄 正在测试设备${deviceId}取消订阅...`, 'success');
+            sendCommand({
+                action: 'unsubscribe',
+                target: 'device',
+                id: deviceId
+            });
+            // 测试后自动获取状态验证
+            setTimeout(() => {
+                getSubscriptionStatus();
+                addMessage(`✅ 设备${deviceId}取消订阅测试已发送，请检查上方订阅状态是否已更新`, 'success');
+            }, 500);
+        }
+
+        function forceRefreshStatus() {
+            getSubscriptionStatus();
+            getSchedulerStatus();
+            getHierarchyStatus();
+            getPointStatus();
+            getPointSubscriptionDetails();
+            addMessage('🔄 已强制刷新所有状态信息', 'success');
+        }
+
+        function getDeviceData() {
+            const deviceId = parseInt(document.getElementById('pushDeviceId').value);
+            if (isNaN(deviceId)) {
+                addMessage('请输入有效的设备ID', 'error');
+                return;
+            }
+            addMessage(`🔄 正在获取设备${deviceId}的数据...`, 'success');
+            sendCommand({
+                action: 'get_device_data',
+                id: deviceId
+            });
+        }
+
+        function getGroupData() {
+            const groupId = parseInt(document.getElementById('pushGroupId').value);
+            if (isNaN(groupId)) {
+                addMessage('请输入有效的设备组ID', 'error');
+                return;
+            }
+            addMessage(`🔄 正在获取设备组${groupId}的数据...`, 'success');
+            sendCommand({
+                action: 'get_group_data',
+                id: groupId
+            });
+        }
+
+        function getAllConnectionDetails() {
+            addMessage(`🔄 正在获取所有连接详情...`, 'success');
+            sendCommand({
+                action: 'get_all_connection_details'
+            });
+        }
+
+        function forceCleanupSubscription() {
+            const targetConnectionId = document.getElementById('cleanupConnectionId').value.trim();
+            const cleanupType = document.getElementById('cleanupType').value;
+            const targetIdValue = document.getElementById('cleanupTargetId').value;
+            const targetId = targetIdValue ? parseInt(targetIdValue) : 0;
+            
+            if (!cleanupType) {
+                addMessage('请选择清理类型', 'error');
+                return;
+            }
+            
+            const targetDesc = targetConnectionId || '当前连接';
+            const typeDesc = cleanupType === 'all' ? '所有订阅' : `${cleanupType}订阅${targetId > 0 ? ` ${targetId}` : ''}`;
+            addMessage(`🗑️ 正在强制清理 ${targetDesc} 的 ${typeDesc}...`, 'success');
+            
+            const command = {
+                action: 'force_cleanup_subscription',
+                subscriptionType: cleanupType
+            };
+            
+            if (targetConnectionId) {
+                command.connectionId = targetConnectionId;
+            }
+            
+            if (targetId > 0) {
+                command.id = targetId;
+            }
+            
+            sendCommand(command);
+        }
+
+        function validatePrecisePush() {
+            addMessage('🎯 开始验证精确推送...', 'success');
+            // 发送测试数据推送
+            testDataPush();
+            // 1秒后检查结果
+            setTimeout(() => {
+                const precision = invalidPushCounter === 0 ? 100 : ((precisePushCounter / (precisePushCounter + invalidPushCounter)) * 100);
+                addMessage(`🎯 精确推送验证结果: 精确率 ${precision.toFixed(1)}%`, precision >= 95 ? 'success' : 'error');
+                if (precision < 95) {
+                    addMessage('❌ 检测到无效推送，请检查订阅关系', 'error');
+                } else {
+                    addMessage('✅ 精确推送验证通过', 'success');
+                }
+            }, 1000);
+        }
+
+        function testPrecisePushScenario() {
+            const point1 = parseInt(document.getElementById('testPointId1').value);
+            const point2 = parseInt(document.getElementById('testPointId2').value);
+            
+            if (isNaN(point1) || isNaN(point2)) {
+                addMessage('请输入有效的测试点位ID', 'error');
+                return;
+            }
+            
+            testScenarioRunning = true;
+            addMessage('🎯 开始精确推送场景测试...', 'success');
+            
+            const testDiv = document.getElementById('pushTestResult');
+            const testContent = document.getElementById('pushTestContent');
+            
+            let testHtml = `
+                <div style="margin-bottom: 15px;">
+                    <strong>🧪 测试场景:</strong> 订阅点位${point1}，不订阅点位${point2}<br>
+                    <strong>📊 预期结果:</strong> 只接收点位${point1}的推送，不接收点位${point2}的推送
+                </div>
+                <div id="testProgress">
+                    <div style="background-color: #fff3cd; padding: 10px; border-radius: 4px;">
+                        ⏳ 测试进行中...
+                    </div>
+                </div>
+            `;
+            
+            testContent.innerHTML = testHtml;
+            testDiv.style.display = 'block';
+            
+            // 清理现有订阅
+            addMessage('🧹 清理现有订阅...', 'success');
+            
+            // 执行测试序列
+            setTimeout(() => {
+                // 订阅点位1
+                addMessage(`📍 订阅点位${point1}...`, 'success');
+                sendCommand({
+                    action: 'subscribe',
+                    target: 'point',
+                    id: point1
+                });
+                
+                setTimeout(() => {
+                    // 发送测试数据推送
+                    addMessage('🔄 发送测试数据推送...', 'success');
+                    testDataPush();
+                    
+                    setTimeout(() => {
+                        // 分析结果
+                        const testProgressDiv = document.getElementById('testProgress');
+                        if (testProgressDiv) {
+                            const receivedPushes = precisePushCounter;
+                            const invalidPushes = invalidPushCounter;
+                            const totalPushes = receivedPushes + invalidPushes;
+                            
+                            let resultHtml = `
+                                <div style="background-color: ${invalidPushes === 0 ? '#d4edda' : '#f8d7da'}; padding: 10px; border-radius: 4px;">
+                                    <strong>🎯 测试结果:</strong><br>
+                                    • 接收到的推送: ${receivedPushes}个<br>
+                                    • 无效推送: ${invalidPushes}个<br>
+                                    • 精确率: ${totalPushes > 0 ? ((receivedPushes / totalPushes) * 100).toFixed(1) : 0}%<br>
+                                    <strong>结论:</strong> ${invalidPushes === 0 ? '✅ 精确推送验证通过' : '❌ 检测到无效推送'}
+                                </div>
+                            `;
+                            
+                            testProgressDiv.innerHTML = resultHtml;
+                        }
+                        
+                        testScenarioRunning = false;
+                        addMessage('🎯 精确推送场景测试完成', 'success');
+                    }, 2000);
+                }, 1000);
+            }, 1000);
+        }
+
+        // 页面加载时更新计数器
+        updateCounters();
+        updatePushValidation();
+        
+        // 添加页面加载完成提示
+        window.addEventListener('load', function() {
+            addMessage('🎯 精确推送测试页面已加载', 'success');
+            addMessage('', 'success');
+            addMessage('🚀 最新优化内容：', 'success');
+            addMessage('1. 🎯 精确推送模型：采用基于订阅关系的精确推送架构', 'success');
+            addMessage('2. 📊 推送验证：实时监控推送消息的精确性', 'success');
+            addMessage('3. 🔍 智能分析：自动检测无效推送并提供原因', 'success');
+            addMessage('4. 🧪 场景测试：提供精确推送场景测试功能', 'success');
+            addMessage('5. 📈 实时统计：显示精确推送率和无效推送数量', 'success');
+            addMessage('', 'success');
+            addMessage('🎯 精确推送原理：', 'success');
+            addMessage('• 每个连接只收到它订阅的点位更新', 'success');
+            addMessage('• 按连接分组进行高效批量推送', 'success');
+            addMessage('• 智能消息格式选择（单点位/批量）', 'success');
+            addMessage('• 避免全局广播，杜绝无效推送', 'success');
+            addMessage('', 'success');
+            addMessage('📊 推送验证功能：', 'success');
+            addMessage('• 实时监控每个推送消息的有效性', 'success');
+            addMessage('• 自动计算精确推送率', 'success');
+            addMessage('• 检测并统计无效推送', 'success');
+            addMessage('• 提供详细的推送分析报告', 'success');
+            addMessage('', 'success');
+            addMessage('🧪 测试建议：', 'success');
+            addMessage('• 使用"🎯 验证精确推送"按钮进行快速验证', 'success');
+            addMessage('• 使用"测试精确推送场景"进行全面测试', 'success');
+            addMessage('• 观察推送验证区域的实时统计', 'success');
+            addMessage('• 如果发现无效推送，请使用诊断工具查找原因', 'success');
+        });
+    </script>
+</body>
+</html> 

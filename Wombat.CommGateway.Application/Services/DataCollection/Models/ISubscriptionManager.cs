@@ -24,6 +24,77 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
     }
 
     /// <summary>
+    /// 点位订阅详情信息
+    /// </summary>
+    public class PointSubscriptionDetails
+    {
+        public int PointId { get; set; }
+        public string? ConnectionId { get; set; }
+        public int? DeviceId { get; set; }
+        public int? GroupId { get; set; }
+        
+        // 各层级的订阅者
+        public List<string> DirectPointSubscribers { get; set; } = new();
+        public List<string> DeviceSubscribers { get; set; } = new();
+        public List<string> GroupSubscribers { get; set; } = new();
+        public List<string> AllSubscribers { get; set; } = new();
+        
+        // 特定连接的订阅状态（当提供ConnectionId时）
+        public bool IsDirectPointSubscriber { get; set; }
+        public bool IsDeviceSubscriber { get; set; }
+        public bool IsGroupSubscriber { get; set; }
+        public bool WillReceiveUpdates { get; set; }
+        public List<string> SubscriptionReasons { get; set; } = new();
+        
+        // 统计信息
+        public int TotalSubscriberCount => AllSubscribers.Count;
+        public int DirectSubscriberCount => DirectPointSubscribers.Count;
+        public int DeviceSubscriberCount => DeviceSubscribers.Count;
+        public int GroupSubscriberCount => GroupSubscribers.Count;
+    }
+
+    /// <summary>
+    /// 点位数据快照
+    /// </summary>
+    public class PointDataSnapshot
+    {
+        public int PointId { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Address { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public DateTime UpdateTime { get; set; }
+        public bool Enable { get; set; }
+        public int ScanRate { get; set; }
+    }
+
+    /// <summary>
+    /// 设备数据快照
+    /// </summary>
+    public class DeviceDataSnapshot
+    {
+        public int DeviceId { get; set; }
+        public string DeviceName { get; set; } = string.Empty;
+        public bool DeviceEnable { get; set; }
+        public int ChannelId { get; set; }
+        public List<PointDataSnapshot> Points { get; set; } = new();
+        public DateTime SnapshotTime { get; set; } = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// 设备组数据快照
+    /// </summary>
+    public class GroupDataSnapshot
+    {
+        public int GroupId { get; set; }
+        public string GroupName { get; set; } = string.Empty;
+        public List<DeviceDataSnapshot> Devices { get; set; } = new();
+        public DateTime SnapshotTime { get; set; } = DateTime.UtcNow;
+        public int TotalPointCount => Devices.Sum(d => d.Points.Count);
+        public int TotalDeviceCount => Devices.Count;
+    }
+
+    /// <summary>
     /// 订阅管理器接口
     /// 支持设备组、设备、点位三种订阅类型，提供层级关系缓存和高效数据推送
     /// </summary>
@@ -190,6 +261,84 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
         void RemoveDeviceHierarchy(int deviceId);
         #endregion
 
+        /// <summary>
+        /// 获取点位订阅详情，用于诊断为什么某个连接会收到特定点位的推送
+        /// </summary>
+        /// <param name="pointId">点位ID</param>
+        /// <param name="connectionId">连接ID（可选，如果提供则只分析该连接）</param>
+        /// <returns>详细的订阅路径信息</returns>
+        PointSubscriptionDetails GetPointSubscriptionDetails(int pointId, string? connectionId = null);
+
+        #region 主动数据推送
+        /// <summary>
+        /// 获取设备下所有点位的当前数据
+        /// </summary>
+        /// <param name="deviceId">设备ID</param>
+        /// <returns>设备下所有点位的数据</returns>
+        Task<DeviceDataSnapshot> GetDeviceDataSnapshotAsync(int deviceId);
+
+        /// <summary>
+        /// 获取设备组下所有点位的当前数据
+        /// </summary>
+        /// <param name="groupId">设备组ID</param>
+        /// <returns>设备组下所有点位的数据</returns>
+        Task<GroupDataSnapshot> GetGroupDataSnapshotAsync(int groupId);
+
+        /// <summary>
+        /// 获取设备下所有点位ID列表
+        /// </summary>
+        /// <param name="deviceId">设备ID</param>
+        /// <returns>点位ID列表</returns>
+        IReadOnlyList<int> GetDevicePointIds(int deviceId);
+
+        /// <summary>
+        /// 获取设备组下所有点位ID列表
+        /// </summary>
+        /// <param name="groupId">设备组ID</param>
+        /// <returns>点位ID列表</returns>
+        IReadOnlyList<int> GetGroupPointIds(int groupId);
+        #endregion
+
+        #region 诊断和维护
+        /// <summary>
+        /// 获取所有连接的详细订阅信息
+        /// </summary>
+        /// <returns>所有连接的订阅详情</returns>
+        List<ConnectionSubscriptionDetails> GetAllConnectionDetails();
+
+        /// <summary>
+        /// 强制清理指定连接的特定类型订阅
+        /// </summary>
+        /// <param name="connectionId">连接ID</param>
+        /// <param name="subscriptionType">订阅类型：device, group, point, all</param>
+        /// <param name="targetId">目标ID（当subscriptionType不是all时）</param>
+        /// <returns>清理结果</returns>
+        CleanupResult ForceCleanupSubscription(string connectionId, string subscriptionType, int? targetId = null);
+        #endregion
+    }
+
+    /// <summary>
+    /// 连接订阅详情
+    /// </summary>
+    public class ConnectionSubscriptionDetails
+    {
+        public string ConnectionId { get; set; } = string.Empty;
+        public DateTime LastActivityTime { get; set; }
+        public List<int> GroupSubscriptions { get; set; } = new();
+        public List<int> DeviceSubscriptions { get; set; } = new();
+        public List<int> PointSubscriptions { get; set; } = new();
+        public int TotalSubscriptions => GroupSubscriptions.Count + DeviceSubscriptions.Count + PointSubscriptions.Count;
+    }
+
+    /// <summary>
+    /// 清理结果
+    /// </summary>
+    public class CleanupResult
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public int RemovedCount { get; set; }
+        public List<string> Details { get; set; } = new();
     }
 
     [AutoInject<ISubscriptionManager>(ServiceLifetime = ServiceLifetime.Singleton)]
@@ -288,14 +437,36 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
 
         public void UnsubscribeFromDevice(string connectionId, int deviceId)
         {
-            if (string.IsNullOrEmpty(connectionId)) return;
+            if (string.IsNullOrEmpty(connectionId)) 
+            {
+                _logger?.LogWarning("取消订阅设备失败：连接ID为空");
+                return;
+            }
 
+            _logger?.LogDebug("开始取消订阅设备：连接ID={ConnectionId}, 设备ID={DeviceId}", connectionId, deviceId);
+
+            bool removed = false;
             if (_deviceSubscriptions.TryGetValue(connectionId, out var set))
             {
                 lock (set)
                 {
-                    set.Remove(deviceId);
+                    removed = set.Remove(deviceId);
+                    _logger?.LogDebug("设备订阅移除结果：连接ID={ConnectionId}, 设备ID={DeviceId}, 移除成功={Removed}, 剩余订阅数={Count}", 
+                        connectionId, deviceId, removed, set.Count);
                 }
+            }
+            else
+            {
+                _logger?.LogWarning("取消订阅设备失败：连接ID={ConnectionId} 没有找到设备订阅记录", connectionId);
+            }
+
+            if (removed)
+            {
+                _logger?.LogInformation("成功取消订阅设备：连接ID={ConnectionId}, 设备ID={DeviceId}", connectionId, deviceId);
+            }
+            else
+            {
+                _logger?.LogWarning("取消订阅设备失败：连接ID={ConnectionId}, 设备ID={DeviceId} 不在订阅列表中", connectionId, deviceId);
             }
 
             UpdateLastActivity(connectionId);
@@ -592,37 +763,6 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
         }
         #endregion
 
-        #region 向后兼容实现
-        [Obsolete("请使用 SubscribeToPoint、SubscribeToDevice 或 SubscribeToGroup 方法")]
-        public void Add(string connectionKey, int itemId)
-        {
-            // 为了向后兼容，默认当作点位订阅处理
-            SubscribeToPoint(connectionKey, itemId);
-        }
-
-        [Obsolete("请使用 UnsubscribeFromPoint、UnsubscribeFromDevice 或 UnsubscribeFromGroup 方法")]
-        public void Remove(string connectionKey, int itemId)
-        {
-            // 为了向后兼容，尝试从所有类型中移除
-            UnsubscribeFromPoint(connectionKey, itemId);
-            UnsubscribeFromDevice(connectionKey, itemId);
-            UnsubscribeFromGroup(connectionKey, itemId);
-        }
-
-        [Obsolete("请使用 GetPointSubscriptions、GetDeviceSubscriptions 或 GetGroupSubscriptions 方法")]
-        public IReadOnlyList<int> Get(string connectionKey)
-        {
-            // 为了向后兼容，返回点位订阅
-            return GetPointSubscriptions(connectionKey);
-        }
-
-        [Obsolete("请使用 GetPointSubscribers、GetDeviceSubscribers 或 GetGroupSubscribers 方法")]
-        public IReadOnlyList<string> GetConnectionsByItem(int itemId)
-        {
-            // 为了向后兼容，当作点位处理
-            return GetPointSubscribers(itemId);
-        }
-        #endregion
 
         #region 私有辅助方法
         private void UpdateLastActivity(string connectionId)
@@ -657,6 +797,433 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
         public void Dispose()
         {
             _cacheLock?.Dispose();
+        }
+        #endregion
+
+        /// <summary>
+        /// 获取点位订阅详情，用于诊断为什么某个连接会收到特定点位的推送
+        /// </summary>
+        /// <param name="pointId">点位ID</param>
+        /// <param name="connectionId">连接ID（可选，如果提供则只分析该连接）</param>
+        /// <returns>详细的订阅路径信息</returns>
+        public PointSubscriptionDetails GetPointSubscriptionDetails(int pointId, string? connectionId = null)
+        {
+            var details = new PointSubscriptionDetails
+            {
+                PointId = pointId,
+                ConnectionId = connectionId
+            };
+
+            _cacheLock.EnterReadLock();
+            try
+            {
+                // 1. 获取直接订阅该点位的连接
+                var pointSubscribers = GetPointSubscribers(pointId);
+                details.DirectPointSubscribers = pointSubscribers.ToList();
+                
+                if (!string.IsNullOrEmpty(connectionId))
+                {
+                    details.IsDirectPointSubscriber = pointSubscribers.Contains(connectionId);
+                }
+
+                // 2. 获取该点位所属设备信息
+                if (_pointToDevice.TryGetValue(pointId, out var deviceId))
+                {
+                    details.DeviceId = deviceId;
+                    var deviceSubscribers = GetDeviceSubscribers(deviceId);
+                    details.DeviceSubscribers = deviceSubscribers.ToList();
+                    
+                    if (!string.IsNullOrEmpty(connectionId))
+                    {
+                        details.IsDeviceSubscriber = deviceSubscribers.Contains(connectionId);
+                    }
+
+                    // 3. 获取该设备所属设备组信息
+                    if (_deviceToGroup.TryGetValue(deviceId, out var groupId))
+                    {
+                        details.GroupId = groupId;
+                        var groupSubscribers = GetGroupSubscribers(groupId);
+                        details.GroupSubscribers = groupSubscribers.ToList();
+                        
+                        if (!string.IsNullOrEmpty(connectionId))
+                        {
+                            details.IsGroupSubscriber = groupSubscribers.Contains(connectionId);
+                        }
+                    }
+                }
+
+                // 4. 汇总所有会收到该点位推送的连接
+                var allSubscribers = new HashSet<string>();
+                allSubscribers.UnionWith(details.DirectPointSubscribers);
+                allSubscribers.UnionWith(details.DeviceSubscribers);
+                allSubscribers.UnionWith(details.GroupSubscribers);
+                details.AllSubscribers = allSubscribers.ToList();
+
+                // 5. 如果指定了连接ID，分析该连接的订阅原因
+                if (!string.IsNullOrEmpty(connectionId))
+                {
+                    var reasons = new List<string>();
+                    if (details.IsDirectPointSubscriber)
+                        reasons.Add($"直接订阅点位 {pointId}");
+                    if (details.IsDeviceSubscriber && details.DeviceId.HasValue)
+                        reasons.Add($"订阅设备 {details.DeviceId.Value}（包含点位 {pointId}）");
+                    if (details.IsGroupSubscriber && details.GroupId.HasValue)
+                        reasons.Add($"订阅设备组 {details.GroupId.Value}（包含设备 {details.DeviceId}，进而包含点位 {pointId}）");
+                    
+                    details.SubscriptionReasons = reasons;
+                    details.WillReceiveUpdates = reasons.Count > 0;
+                }
+            }
+            finally
+            {
+                _cacheLock.ExitReadLock();
+            }
+
+            return details;
+        }
+
+        #region 主动数据推送实现
+        /// <summary>
+        /// 获取设备下所有点位的当前数据
+        /// </summary>
+        public async Task<DeviceDataSnapshot> GetDeviceDataSnapshotAsync(int deviceId)
+        {
+            var snapshot = new DeviceDataSnapshot
+            {
+                DeviceId = deviceId,
+                SnapshotTime = DateTime.UtcNow
+            };
+
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var deviceRepository = scope.ServiceProvider.GetRequiredService<Domain.Repositories.IDeviceRepository>();
+                var devicePointRepository = scope.ServiceProvider.GetRequiredService<Domain.Repositories.IDevicePointRepository>();
+                var cacheManager = scope.ServiceProvider.GetRequiredService<CacheManager>();
+
+                // 获取设备信息
+                var device = await deviceRepository.GetByIdAsync(deviceId);
+                if (device != null)
+                {
+                    snapshot.DeviceName = device.Name;
+                    snapshot.DeviceEnable = device.Enable;
+                    snapshot.ChannelId = device.ChannelId;
+                }
+
+                // 获取设备下所有点位
+                var points = await devicePointRepository.GetDevicePointsAsync(deviceId);
+                foreach (var point in points)
+                {
+                    var pointSnapshot = new PointDataSnapshot
+                    {
+                        PointId = point.Id,
+                        Name = point.Name,
+                        Address = point.Address,
+                        Enable = point.Enable,
+                        ScanRate = point.ScanRate
+                    };
+
+                    // 尝试从缓存获取最新值
+                    var cachedValue = cacheManager.GetCachedValue(point.Id);
+                    if (cachedValue.HasValue)
+                    {
+                        pointSnapshot.Value = cachedValue.Value.Value;
+                        pointSnapshot.Status = cachedValue.Value.Status.ToString();
+                        pointSnapshot.UpdateTime = cachedValue.Value.UpdateTime;
+                    }
+                    else
+                    {
+                        // 使用数据库中的值
+                        pointSnapshot.Value = point.Value ?? string.Empty;
+                        pointSnapshot.Status = point.Status.ToString();
+                        pointSnapshot.UpdateTime = point.UpdateTime;
+                    }
+
+                    snapshot.Points.Add(pointSnapshot);
+                }
+
+                _logger?.LogDebug("获取设备 {DeviceId} 数据快照完成，包含 {PointCount} 个点位", deviceId, snapshot.Points.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "获取设备 {DeviceId} 数据快照时发生错误", deviceId);
+            }
+
+            return snapshot;
+        }
+
+        /// <summary>
+        /// 获取设备组下所有点位的当前数据
+        /// </summary>
+        public async Task<GroupDataSnapshot> GetGroupDataSnapshotAsync(int groupId)
+        {
+            var snapshot = new GroupDataSnapshot
+            {
+                GroupId = groupId,
+                SnapshotTime = DateTime.UtcNow
+            };
+
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var deviceRepository = scope.ServiceProvider.GetRequiredService<Domain.Repositories.IDeviceRepository>();
+                var deviceGroupRepository = scope.ServiceProvider.GetRequiredService<Domain.Repositories.IDeviceGroupRepository>();
+
+                // 获取设备组信息
+                var group = await deviceGroupRepository.GetByIdAsync(groupId);
+                if (group != null)
+                {
+                    snapshot.GroupName = group.Name;
+                }
+
+                // 获取设备组下所有设备
+                var devices = await deviceRepository.Select.Where(x=>x.DeviceGroupId == groupId).ToListAsync();
+                foreach (var device in devices)
+                {
+                    var deviceSnapshot = await GetDeviceDataSnapshotAsync(device.Id);
+                    snapshot.Devices.Add(deviceSnapshot);
+                }
+
+                _logger?.LogDebug("获取设备组 {GroupId} 数据快照完成，包含 {DeviceCount} 个设备，{PointCount} 个点位", 
+                    groupId, snapshot.TotalDeviceCount, snapshot.TotalPointCount);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "获取设备组 {GroupId} 数据快照时发生错误", groupId);
+            }
+
+            return snapshot;
+        }
+
+        /// <summary>
+        /// 获取设备下所有点位ID列表
+        /// </summary>
+        public IReadOnlyList<int> GetDevicePointIds(int deviceId)
+        {
+            _cacheLock.EnterReadLock();
+            try
+            {
+                if (_deviceToPoints.TryGetValue(deviceId, out var pointIds))
+                {
+                    return pointIds.ToList();
+                }
+                return Array.Empty<int>();
+            }
+            finally
+            {
+                _cacheLock.ExitReadLock();
+            }
+        }
+
+        /// <summary>
+        /// 获取设备组下所有点位ID列表
+        /// </summary>
+        public IReadOnlyList<int> GetGroupPointIds(int groupId)
+        {
+            var pointIds = new List<int>();
+            
+            _cacheLock.EnterReadLock();
+            try
+            {
+                // 获取设备组下所有设备
+                if (_groupToDevices.TryGetValue(groupId, out var deviceIds))
+                {
+                    foreach (var deviceId in deviceIds)
+                    {
+                        // 获取每个设备下的点位
+                        if (_deviceToPoints.TryGetValue(deviceId, out var devicePointIds))
+                        {
+                            pointIds.AddRange(devicePointIds);
+                        }
+                    }
+                }
+                
+                return pointIds;
+            }
+            finally
+            {
+                _cacheLock.ExitReadLock();
+            }
+        }
+        #endregion
+
+        #region 诊断和维护
+        /// <summary>
+        /// 获取所有连接的详细订阅信息
+        /// </summary>
+        /// <returns>所有连接的订阅详情</returns>
+        public List<ConnectionSubscriptionDetails> GetAllConnectionDetails()
+        {
+            _cacheLock.EnterReadLock();
+            try
+            {
+                var connectionMap = new Dictionary<string, ConnectionSubscriptionDetails>();
+                
+                // 收集所有连接ID
+                var allConnections = new HashSet<string>();
+                foreach (var key in _groupSubscriptions.Keys) allConnections.Add(key);
+                foreach (var key in _deviceSubscriptions.Keys) allConnections.Add(key);
+                foreach (var key in _pointSubscriptions.Keys) allConnections.Add(key);
+                
+                // 为每个连接创建详情对象
+                foreach (var connectionId in allConnections)
+                {
+                    var detail = new ConnectionSubscriptionDetails
+                    {
+                        ConnectionId = connectionId,
+                        LastActivityTime = _connectionLastActivity.GetValueOrDefault(connectionId, DateTime.MinValue)
+                    };
+                    
+                    // 添加组订阅
+                    if (_groupSubscriptions.TryGetValue(connectionId, out var groupSet))
+                    {
+                        detail.GroupSubscriptions = groupSet.ToList();
+                    }
+                    
+                    // 添加设备订阅
+                    if (_deviceSubscriptions.TryGetValue(connectionId, out var deviceSet))
+                    {
+                        detail.DeviceSubscriptions = deviceSet.ToList();
+                    }
+                    
+                    // 添加点位订阅
+                    if (_pointSubscriptions.TryGetValue(connectionId, out var pointSet))
+                    {
+                        detail.PointSubscriptions = pointSet.ToList();
+                    }
+                    
+                    connectionMap[connectionId] = detail;
+                }
+                
+                return connectionMap.Values.ToList();
+            }
+            finally
+            {
+                _cacheLock.ExitReadLock();
+            }
+        }
+
+        /// <summary>
+        /// 强制清理指定连接的特定类型订阅
+        /// </summary>
+        /// <param name="connectionId">连接ID</param>
+        /// <param name="subscriptionType">订阅类型：device, group, point, all</param>
+        /// <param name="targetId">目标ID（当subscriptionType不是all时）</param>
+        /// <returns>清理结果</returns>
+        public CleanupResult ForceCleanupSubscription(string connectionId, string subscriptionType, int? targetId = null)
+        {
+            _cacheLock.EnterWriteLock();
+            try
+            {
+                var removedCount = 0;
+                var details = new List<string>();
+
+                if (string.IsNullOrEmpty(connectionId))
+                {
+                    return new CleanupResult { Success = false, Message = "连接ID不能为空", RemovedCount = 0, Details = new List<string> { "连接ID为空" } };
+                }
+
+                if (subscriptionType == "all")
+                {
+                    _groupSubscriptions.TryRemove(connectionId, out _);
+                    _deviceSubscriptions.TryRemove(connectionId, out _);
+                    _pointSubscriptions.TryRemove(connectionId, out _);
+                    _connectionLastActivity.TryRemove(connectionId, out _);
+                    removedCount = 3; // 移除所有订阅
+                    details.Add($"移除连接 {connectionId} 的所有订阅");
+                }
+                else if (subscriptionType == "group")
+                {
+                    if (targetId.HasValue)
+                    {
+                        _groupSubscriptions.TryGetValue(connectionId, out var set);
+                        if (set != null)
+                        {
+                            lock (set)
+                            {
+                                removedCount = set.Remove(targetId.Value) ? 1 : 0;
+                            }
+                            if (removedCount > 0)
+                            {
+                                details.Add($"移除连接 {connectionId} 对设备组 {targetId.Value} 的订阅");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _groupSubscriptions.TryRemove(connectionId, out _);
+                        _connectionLastActivity.TryRemove(connectionId, out _);
+                        removedCount = 2; // 移除组订阅和活动时间
+                        details.Add($"移除连接 {connectionId} 的所有组订阅");
+                    }
+                }
+                else if (subscriptionType == "device")
+                {
+                    if (targetId.HasValue)
+                    {
+                        _deviceSubscriptions.TryGetValue(connectionId, out var set);
+                        if (set != null)
+                        {
+                            lock (set)
+                            {
+                                removedCount = set.Remove(targetId.Value) ? 1 : 0;
+                            }
+                            if (removedCount > 0)
+                            {
+                                details.Add($"移除连接 {connectionId} 对设备 {targetId.Value} 的订阅");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _deviceSubscriptions.TryRemove(connectionId, out _);
+                        _connectionLastActivity.TryRemove(connectionId, out _);
+                        removedCount = 2; // 移除设备订阅和活动时间
+                        details.Add($"移除连接 {connectionId} 的所有设备订阅");
+                    }
+                }
+                else if (subscriptionType == "point")
+                {
+                    if (targetId.HasValue)
+                    {
+                        _pointSubscriptions.TryGetValue(connectionId, out var set);
+                        if (set != null)
+                        {
+                            lock (set)
+                            {
+                                removedCount = set.Remove(targetId.Value) ? 1 : 0;
+                            }
+                            if (removedCount > 0)
+                            {
+                                details.Add($"移除连接 {connectionId} 对点位 {targetId.Value} 的订阅");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _pointSubscriptions.TryRemove(connectionId, out _);
+                        _connectionLastActivity.TryRemove(connectionId, out _);
+                        removedCount = 2; // 移除点位订阅和活动时间
+                        details.Add($"移除连接 {connectionId} 的所有点位订阅");
+                    }
+                }
+                else
+                {
+                    return new CleanupResult { Success = false, Message = $"不支持的订阅类型: {subscriptionType}", RemovedCount = 0, Details = new List<string> { $"不支持的订阅类型: {subscriptionType}" } };
+                }
+
+                _connectionLastActivity.AddOrUpdate(connectionId, DateTime.UtcNow, (_, _) => DateTime.UtcNow); // 更新活动时间
+                return new CleanupResult { Success = true, Message = $"成功清理连接 {connectionId} 的 {subscriptionType} 订阅", RemovedCount = removedCount, Details = details };
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "强制清理订阅失败: 连接ID={ConnectionId}, 类型={SubscriptionType}, 目标ID={TargetId}", connectionId, subscriptionType, targetId);
+                return new CleanupResult { Success = false, Message = $"强制清理订阅失败: {ex.Message}", RemovedCount = 0, Details = new List<string> { $"强制清理订阅失败: {ex.Message}" } };
+            }
+            finally
+            {
+                _cacheLock.ExitWriteLock();
+            }
         }
         #endregion
     }

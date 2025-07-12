@@ -1,66 +1,70 @@
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Wombat.CommGateway.Application.Interfaces;
 using Wombat.CommGateway.Application.Services.DataCollection;
-using Wombat.CommGateway.Domain.Enums;
-using Wombat.Extensions.AutoGenerator.Attributes;
 
 namespace Wombat.CommGateway.Application.Hubs
 {
     /// <summary>
     /// 数据采集实时推送Hub
-    /// 负责将缓存中的点位数据实时推送到前端
+    /// 负责管理客户端订阅关系，数据推送通过统一的DataDistributionService处理
     /// 支持设备组、设备、点位三种订阅类型
-    /// </summary>
     /// 
-    //[AutoInject<DataCollectionHub>(ServiceLifetime = ServiceLifetime.Singleton)]
+    /// 注意：此Hub只负责订阅管理，所有数据推送都通过DataDistributionService统一处理
+    /// 这确保了推送逻辑的一致性和基于订阅关系的精确推送
+    /// </summary>
     public class DataCollectionHub : Hub
     {
         private readonly ILogger<DataCollectionHub> _logger;
-        private readonly ICacheUpdateNotificationService _cacheUpdateNotificationService;
         private readonly ISubscriptionManager _subscriptionManager;
 
-        // 如果你需要追踪连接 <-> 用户 Id，可继续保留
+        // 连接用户映射（如需要）
         private static readonly ConcurrentDictionary<string, string> _connectionUsers = new();
 
         public DataCollectionHub(
             ILogger<DataCollectionHub> logger,
-            ISubscriptionManager subscriptionManager,
-            ICacheUpdateNotificationService cacheUpdateNotificationService)
+            ISubscriptionManager subscriptionManager)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
-            _cacheUpdateNotificationService = cacheUpdateNotificationService ?? throw new ArgumentNullException(nameof(cacheUpdateNotificationService));
         }
 
         /************************** 连接生命周期 **************************/
+        
+        /// <summary>
+        /// 客户端连接时的处理
+        /// </summary>
         public override async Task OnConnectedAsync()
         {
             var connectionId = Context.ConnectionId;
             _logger.LogInformation("客户端 {ConnectionId} 已连接", connectionId);
 
-            // 先移除旧记录确保幂等，然后留空订阅集合
+            // 确保连接状态清洁，移除可能存在的旧记录
             _subscriptionManager.RemoveConnection(connectionId);
+            
             await base.OnConnectedAsync();
         }
 
+        /// <summary>
+        /// 客户端断开连接时的处理
+        /// </summary>
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
             var connectionId = Context.ConnectionId;
             _logger.LogInformation("客户端 {ConnectionId} 已断开连接", connectionId);
 
+            // 清理订阅关系和连接记录
             _subscriptionManager.RemoveConnection(connectionId);
             _connectionUsers.TryRemove(connectionId, out _);
+            
             await base.OnDisconnectedAsync(exception);
         }
 
-        /************************** 订阅相关 **************************/
+        /************************** 订阅管理 **************************/
+        
         /// <summary>
         /// 订阅设备
         /// 客户端将接收该设备下所有点位的数据更新
@@ -142,6 +146,8 @@ namespace Wombat.CommGateway.Application.Hubs
             await Clients.Caller.SendAsync("UnsubscriptionConfirmed", new { Type = "Point", Id = pointId });
         }
 
+        /************************** 查询功能 **************************/
+        
         /// <summary>
         /// 获取当前连接的订阅状态
         /// </summary>
@@ -161,98 +167,6 @@ namespace Wombat.CommGateway.Application.Hubs
             };
 
             await Clients.Caller.SendAsync("SubscriptionStatus", statusData);
-        }
-
-        /************************** 推送数据 **************************/
-        /// <summary>
-        /// 推送点位数据更新
-        /// 自动发送给所有相关订阅者（直接订阅点位、订阅其设备、订阅其设备组的客户端）
-        /// </summary>
-        /// <param name="pointId">点位ID</param>
-        /// <param name="value">点位值</param>
-        /// <param name="status">点位状态</param>
-        /// <param name="updateTime">更新时间</param>
-        public async Task PushPointUpdate(int pointId, string value, DataPointStatus status, DateTime updateTime)
-        {
-            var message = new
-            {
-                Type = "PointUpdate",
-                PointId = pointId,
-                Value = value,
-                Status = status.ToString(),
-                UpdateTime = updateTime
-            };
-
-            // 使用优化的数据推送查询，一次性获取所有相关连接
-            var subscribedConnections = _subscriptionManager.GetConnectionsForPointUpdate(pointId);
-            if (subscribedConnections.Any())
-            {
-                await Clients.Clients(subscribedConnections).SendAsync("ReceivePointUpdate", message);
-                _logger.LogDebug("推送点位 {PointId} 更新到 {Count} 个客户端（包括层级订阅）", pointId, subscribedConnections.Count);
-            }
-        }
-
-        /// <summary>
-        /// 推送批量点位更新
-        /// </summary>
-        /// <param name="updates">更新数据列表</param>
-        public async Task PushBatchPointsUpdate(List<object> updates)
-        {
-            var message = new
-            {
-                Type = "BatchPointsUpdate",
-                Updates = updates,
-                UpdateTime = DateTime.UtcNow
-            };
-
-            await Clients.All.SendAsync("ReceiveBatchPointsUpdate", message);
-            _logger.LogDebug("推送批量点位更新到所有客户端，共 {Count} 个点位", updates.Count);
-        }
-
-        /// <summary>
-        /// 推送点位状态变更
-        /// </summary>
-        /// <param name="pointId">点位ID</param>
-        /// <param name="status">新状态</param>
-        public async Task PushPointStatusChange(int pointId, DataPointStatus status)
-        {
-            var message = new
-            {
-                Type = "PointStatusChange",
-                PointId = pointId,
-                Status = status.ToString(),
-                UpdateTime = DateTime.UtcNow
-            };
-
-            // 使用优化的数据推送查询，包含层级订阅
-            var subscribedConnections = _subscriptionManager.GetConnectionsForPointUpdate(pointId);
-            if (subscribedConnections.Any())
-            {
-                await Clients.Clients(subscribedConnections).SendAsync("ReceivePointStatusChange", message);
-                _logger.LogDebug("推送点位 {PointId} 状态变更到 {Count} 个客户端（包括层级订阅）", pointId, subscribedConnections.Count);
-            }
-        }
-
-        /// <summary>
-        /// 推送点位移除通知
-        /// </summary>
-        /// <param name="pointId">点位ID</param>
-        public async Task PushPointRemoved(int pointId)
-        {
-            var message = new
-            {
-                Type = "PointRemoved",
-                PointId = pointId,
-                UpdateTime = DateTime.UtcNow
-            };
-
-            // 使用优化的数据推送查询，包含层级订阅
-            var subscribedConnections = _subscriptionManager.GetConnectionsForPointUpdate(pointId);
-            if (subscribedConnections.Any())
-            {
-                await Clients.Clients(subscribedConnections).SendAsync("ReceivePointRemoved", message);
-                _logger.LogDebug("推送点位 {PointId} 移除通知到 {Count} 个客户端（包括层级订阅）", pointId, subscribedConnections.Count);
-            }
         }
 
         /// <summary>
@@ -290,6 +204,7 @@ namespace Wombat.CommGateway.Application.Hubs
         }
 
         /************************** 管理功能 **************************/
+        
         /// <summary>
         /// 刷新层级关系缓存
         /// </summary>

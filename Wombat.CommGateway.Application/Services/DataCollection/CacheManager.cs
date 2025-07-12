@@ -16,14 +16,16 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
     /// 数据缓存管理器
     /// 负责缓存采集到的数据，减少数据库访问
     /// </summary>
-    [AutoInject(typeof(CacheManager),ServiceLifetime.Singleton)]
+    [AutoInject<CacheManager>(ServiceLifetime.Singleton)]
     public class CacheManager
     {
         private readonly ILogger<CacheManager> _logger;
         private readonly ICacheUpdateNotificationService _notificationService;
         private readonly ConcurrentDictionary<int, CachedPoint> _pointCache;
         private readonly Timer _flushTimer;
+        private readonly Timer _pushTimer; // 新增定时推送器
         private readonly int _flushIntervalMs;
+        private readonly int _pushIntervalMs = 5000; // 5秒推送一次
         private readonly int _maxCacheAge;
         private readonly object _lockObject = new object();
         private readonly ConcurrentQueue<int> _dirtyPoints;
@@ -38,6 +40,7 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
             _flushIntervalMs = 5000; // 5秒刷新一次
             _maxCacheAge = 60000; // 最大缓存时间1分钟
             _flushTimer = new Timer(FlushCache, null, Timeout.Infinite, Timeout.Infinite);
+            _pushTimer = new Timer(PushCacheData, null, Timeout.Infinite, Timeout.Infinite);
         }
 
         /// <summary>
@@ -52,7 +55,8 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
 
                 _isRunning = true;
                 _flushTimer.Change(0, _flushIntervalMs);
-                _logger.LogInformation("缓存管理器已启动");
+                _pushTimer.Change(_pushIntervalMs, _pushIntervalMs); // 启动定时推送
+                _logger.LogInformation("缓存管理器已启动，包含定时数据推送功能");
             }
         }
 
@@ -68,6 +72,7 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
 
                 _isRunning = false;
                 _flushTimer.Change(Timeout.Infinite, Timeout.Infinite);
+                _pushTimer.Change(Timeout.Infinite, Timeout.Infinite); // 停止定时推送
                 _logger.LogInformation("缓存管理器已停止");
             }
         }
@@ -78,7 +83,8 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
         /// <param name="pointId">点位ID</param>
         /// <param name="value">点位值</param>
         /// <param name="status">点位状态</param>
-        public void UpdateCache(int pointId, string value, DataPointStatus status = DataPointStatus.Good)
+        /// <param name="forceNotify">是否强制通知，即使数据没有变化</param>
+        public void UpdateCache(int pointId, string value, DataPointStatus status = DataPointStatus.Good, bool forceNotify = false)
         {
             var now = DateTime.Now;
             var cachedPoint = _pointCache.GetOrAdd(pointId, id => new CachedPoint
@@ -91,16 +97,27 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
                 IsDirty = true
             });
 
+            var hasChanged = cachedPoint.Value != value || cachedPoint.Status != status;
+            
             // 更新现有缓存
-            if (cachedPoint.Value != value || cachedPoint.Status != status)
+            if (hasChanged || forceNotify)
             {
-                cachedPoint.Value = value;
-                cachedPoint.Status = status;
-                cachedPoint.UpdateTime = now;
-                cachedPoint.IsDirty = true;
+                if (hasChanged)
+                {
+                    cachedPoint.Value = value;
+                    cachedPoint.Status = status;
+                    cachedPoint.UpdateTime = now;
+                    cachedPoint.IsDirty = true;
 
-                // 添加到脏数据队列
-                _dirtyPoints.Enqueue(pointId);
+                    // 添加到脏数据队列
+                    _dirtyPoints.Enqueue(pointId);
+                    
+                    _logger.LogDebug($"点位 {pointId} 数据已更新: {value} (状态: {status})");
+                }
+                else
+                {
+                    _logger.LogDebug($"点位 {pointId} 强制推送: {value} (状态: {status})");
+                }
 
                 // 通知WebSocket服务推送数据更新
                 _ = Task.Run(async () =>
@@ -121,16 +138,24 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
         /// 批量更新点位缓存
         /// </summary>
         /// <param name="updates">点位更新字典</param>
-        public void BatchUpdateCache(Dictionary<int, (string Value, DataPointStatus Status)> updates)
+        /// <param name="forceNotify">是否强制通知，即使数据没有变化</param>
+        public void BatchUpdateCache(Dictionary<int, (string Value, DataPointStatus Status)> updates, bool forceNotify = false)
         {
             if (updates == null || updates.Count == 0)
                 return;
 
             var now = DateTime.Now;
+            var hasAnyChanges = false;
+            var changedPoints = new List<int>();
+            var allPoints = new List<int>();
+            
+            _logger.LogDebug($"开始批量更新缓存: {updates.Count} 个点位, forceNotify={forceNotify}");
+            
             foreach (var kvp in updates)
             {
                 var pointId = kvp.Key;
                 var (value, status) = kvp.Value;
+                allPoints.Add(pointId);
 
                 var cachedPoint = _pointCache.GetOrAdd(pointId, id => new CachedPoint
                 {
@@ -142,8 +167,10 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
                     IsDirty = true
                 });
 
+                var hasChanged = cachedPoint.Value != value || cachedPoint.Status != status;
+                
                 // 更新现有缓存
-                if (cachedPoint.Value != value || cachedPoint.Status != status)
+                if (hasChanged)
                 {
                     cachedPoint.Value = value;
                     cachedPoint.Status = status;
@@ -152,26 +179,54 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
 
                     // 添加到脏数据队列
                     _dirtyPoints.Enqueue(pointId);
+                    changedPoints.Add(pointId);
+                    hasAnyChanges = true;
+                    
+                    _logger.LogDebug($"点位 {pointId} 数据已更新: {value} (状态: {status})");
+                }
+                else
+                {
+                    _logger.LogDebug($"点位 {pointId} 数据无变化: {value} (状态: {status})");
                 }
             }
 
-            // 批量通知WebSocket服务推送数据更新
-            _ = Task.Run(async () =>
+            // 如果有变化或强制通知，则发送批量通知
+            if (hasAnyChanges || forceNotify)
             {
-                try
+                if (hasAnyChanges)
                 {
-                    var batchUpdates = new Dictionary<int, (string Value, DataPointStatus Status, DateTime UpdateTime)>();
-                    foreach (var kvp in updates)
+                    _logger.LogInformation($"批量更新缓存: {changedPoints.Count} 个点位数据发生变化，将推送通知");
+                }
+                else
+                {
+                    _logger.LogInformation($"强制批量推送: {updates.Count} 个点位数据 (无变化但强制推送)");
+                }
+                
+                // 批量通知WebSocket服务推送数据更新
+                _ = Task.Run(async () =>
+                {
+                    try
                     {
-                        batchUpdates[kvp.Key] = (kvp.Value.Value, kvp.Value.Status, now);
+                        var batchUpdates = new Dictionary<int, (string Value, DataPointStatus Status, DateTime UpdateTime)>();
+                        foreach (var kvp in updates)
+                        {
+                            batchUpdates[kvp.Key] = (kvp.Value.Value, kvp.Value.Status, now);
+                        }
+                        
+                        _logger.LogDebug($"开始调用通知服务推送 {batchUpdates.Count} 个点位数据");
+                        await _notificationService.OnBatchPointsDataUpdatedAsync(batchUpdates);
+                        _logger.LogDebug($"通知服务推送完成");
                     }
-                    await _notificationService.OnBatchPointsDataUpdatedAsync(batchUpdates);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, $"批量通知点位数据更新时发生错误");
-                }
-            });
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"批量通知点位数据更新时发生错误");
+                    }
+                });
+            }
+            else
+            {
+                _logger.LogInformation($"批量更新缓存: {updates.Count} 个点位数据无变化且未设置强制推送，跳过通知");
+            }
         }
 
         /// <summary>
@@ -302,6 +357,56 @@ namespace Wombat.CommGateway.Application.Services.DataCollection
                 _logger.LogError(ex, "刷新缓存时发生错误");
             }
         }
+
+        /// <summary>
+        /// 定时推送缓存数据
+        /// </summary>
+        /// <param name="state">状态对象</param>
+        private void PushCacheData(object state)
+        {
+            if (!_isRunning)
+                return;
+
+            try
+            {
+                var allCachedData = new Dictionary<int, (string Value, DataPointStatus Status, DateTime UpdateTime)>();
+                
+                // 获取所有缓存的点位数据
+                foreach (var kvp in _pointCache)
+                {
+                    var pointId = kvp.Key;
+                    var cachedPoint = kvp.Value;
+                    allCachedData[pointId] = (cachedPoint.Value, cachedPoint.Status, cachedPoint.UpdateTime);
+                }
+
+                if (allCachedData.Count > 0)
+                {
+                    _logger.LogDebug($"定时推送 {allCachedData.Count} 个点位的缓存数据");
+                    
+                    // 异步发送批量推送通知
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await _notificationService.OnBatchPointsDataUpdatedAsync(allCachedData);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "定时推送缓存数据时发生错误");
+                        }
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "定时推送缓存数据时发生异常");
+            }
+        }
+
+        /// <summary>
+        /// 刷新缓存到数据库
+        /// </summary>
+        /// <param name="state">状态对象</param>
 
         /// <summary>
         /// 缓存刷新事件

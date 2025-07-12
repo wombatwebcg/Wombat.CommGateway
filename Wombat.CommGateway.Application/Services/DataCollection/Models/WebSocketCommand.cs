@@ -39,6 +39,12 @@ namespace Wombat.CommGateway.Application.Services.DataCollection.Models
         public DateTime Timestamp { get; init; } = DateTime.UtcNow;
 
         /// <summary>
+        /// 订阅类型（用于强制清理命令）
+        /// </summary>
+        [JsonPropertyName("subscriptionType")]
+        public string? SubscriptionType { get; init; }
+
+        /// <summary>
         /// 创建订阅命令
         /// </summary>
         public static WebSocketCommand CreateSubscribe(string target, int id)
@@ -98,7 +104,18 @@ namespace Wombat.CommGateway.Application.Services.DataCollection.Models
         public bool IsValid()
         {
             return !string.IsNullOrEmpty(Action) && 
-                   (Action == "ping" || Action == "get_subscription_status" || Action == "get_connection_statistics" || 
+                   (Action == "ping" || 
+                    Action == "get_subscription_status" || 
+                    Action == "get_connection_statistics" ||
+                    Action == "get_scheduler_status" ||
+                    Action == "get_hierarchy_status" ||
+                    Action == "test_data_push" ||
+                    Action == "get_all_connection_details" ||
+                    (Action == "get_point_status" && Id > 0) ||
+                    (Action == "get_point_subscription_details" && Id > 0) ||
+                    (Action == "get_device_data" && Id > 0) ||
+                    (Action == "get_group_data" && Id > 0) ||
+                    (Action == "force_cleanup_subscription" && !string.IsNullOrEmpty(SubscriptionType)) ||
                     (!string.IsNullOrEmpty(Target) && Id > 0));
         }
 
@@ -139,5 +156,14 @@ namespace Wombat.CommGateway.Application.Services.DataCollection.Models
         public const string Ping = "ping";
         public const string GetSubscriptionStatus = "get_subscription_status";
         public const string GetConnectionStatistics = "get_connection_statistics";
+        public const string GetSchedulerStatus = "get_scheduler_status";
+        public const string GetHierarchyStatus = "get_hierarchy_status";
+        public const string TestDataPush = "test_data_push";
+        public const string GetPointStatus = "get_point_status";
+        public const string GetPointSubscriptionDetails = "get_point_subscription_details";
+        public const string GetDeviceData = "get_device_data";
+        public const string GetGroupData = "get_group_data";
+        public const string GetAllConnectionDetails = "get_all_connection_details";
+        public const string ForceCleanupSubscription = "force_cleanup_subscription";
     }
 } 

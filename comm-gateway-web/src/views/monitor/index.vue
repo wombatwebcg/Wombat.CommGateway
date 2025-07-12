@@ -168,18 +168,55 @@
           <div class="debug-section">
             <h4>页面信息</h4>
             <p><strong>页面ID:</strong> {{ pageId }}</p>
-            <p><strong>连接状态:</strong> {{ connectionStatus }}</p>
+            <p><strong>连接状态:</strong> 
+              <span :style="{ color: connectionStatus === 'Connected' ? '#67c23a' : '#f56c6c' }">
+                {{ connectionStatus }}
+              </span>
+            </p>
             <p><strong>当前节点:</strong> {{ treeManager.getCurrentNode()?.name || '无' }}</p>
             <p><strong>点位数量:</strong> {{ points.length }}</p>
+            <p><strong>架构版本:</strong> <span style="color: #409eff;">优化版 v2.0</span></p>
           </div>
           <div class="debug-section">
-            <h4>订阅状态</h4>
-            <p><strong>当前订阅:</strong> {{ currentSubscription ? `${currentSubscription.type}: ${currentSubscription.id}` : '无' }}</p>
+            <h4>订阅状态 (优化架构)</h4>
+            <p><strong>当前页面订阅:</strong> {{ currentSubscription ? `${currentSubscription.type}: ${currentSubscription.id}` : '无' }}</p>
+            <p><strong>订阅验证:</strong> 
+              <span :style="{ color: dataCollectionSignalR.validateSubscriptions() ? '#67c23a' : '#f56c6c' }">
+                {{ dataCollectionSignalR.validateSubscriptions() ? '有效' : '无效' }}
+              </span>
+            </p>
+            <template v-if="debugStats">
+              <p><strong>页面订阅数:</strong> 
+                设备{{ debugStats.currentPage?.devices || 0 }} | 
+                设备组{{ debugStats.currentPage?.groups || 0 }} | 
+                点位{{ debugStats.currentPage?.points || 0 }}
+              </p>
+              <p><strong>全局订阅数:</strong> 
+                设备{{ debugStats.global.devices }} | 
+                设备组{{ debugStats.global.groups }} | 
+                点位{{ debugStats.global.points }}
+              </p>
+              <p><strong>总页面数:</strong> {{ debugStats.totalPages }}</p>
+            </template>
           </div>
           <div class="debug-section">
             <h4>实时数据</h4>
             <p><strong>加载状态:</strong> {{ realTimeDataLoading ? '加载中' : '已完成' }}</p>
             <p><strong>最后更新:</strong> {{ lastUpdateTime || '无' }}</p>
+            <template v-if="debugStats">
+              <p><strong>注册处理器:</strong> 
+                更新{{ debugStats.handlers.pointUpdate }} | 
+                批量{{ debugStats.handlers.batchPointsUpdate }} | 
+                状态{{ debugStats.handlers.pointStatusChange }}
+              </p>
+            </template>
+          </div>
+          <div class="debug-section">
+            <h4>推送架构</h4>
+            <p><strong>模式:</strong> <span style="color: #67c23a;">统一订阅推送</span></p>
+            <p><strong>分发服务:</strong> <span style="color: #67c23a;">已启用</span></p>
+            <p><strong>层级订阅:</strong> <span style="color: #67c23a;">支持</span></p>
+            <p><strong>重复推送:</strong> <span style="color: #67c23a;">已消除</span></p>
           </div>
         </div>
       </div>
@@ -528,6 +565,7 @@ const currentSubscription = ref<{ type: 'device' | 'group' | 'point', id: number
 // 调试抽屉相关
 const debugDrawerVisible = ref(false)
 const lastUpdateTime = ref<string>('')
+const debugStats = ref<any>(null)
 
 // 处理树控件自身的节点点击
 const handleTreeNodeClick = (data: TreeNode, node: any) => {
@@ -705,6 +743,9 @@ onMounted(async () => {
     dataCollectionSignalR.addPointStatusChangeHandler(pageId, handlePointStatusChange)
     dataCollectionSignalR.addPointRemovedHandler(pageId, handlePointRemoved)
     dataCollectionSignalR.addBatchPointsRemovedHandler(pageId, handleBatchPointsRemoved)
+    
+    // 初始化调试统计信息
+    debugStats.value = dataCollectionSignalR.getSubscriptionStatistics()
     
     // 在onUnmounted中清理
     onUnmounted(() => {
@@ -1239,20 +1280,38 @@ const paginatedPoints = computed(() => {
   return points.value.slice(start, end)
 })
 
-// 刷新调试信息
+// 刷新调试信息 - 增强版，适配优化后的推送架构
 const refreshDebugInfo = () => {
-  console.log('Refreshing debug info...')
+  console.log('=== 刷新调试信息 (优化架构) ===')
   console.log('页面ID:', pageId)
-  console.log('连接状态:', dataCollectionSignalR.getConnectionState())
+  
+  // 获取详细的订阅统计信息
+  const stats = dataCollectionSignalR.getSubscriptionStatistics()
+  debugStats.value = stats  // 更新调试统计数据供模板使用
+  console.log('详细订阅统计:', stats)
+  
+  console.log('连接状态:', stats.connectionState)
   console.log('当前订阅:', currentSubscription.value ? `${currentSubscription.value.type}: ${currentSubscription.value.id}` : '无')
   console.log('页面订阅验证:', dataCollectionSignalR.validateSubscriptions() ? '有效' : '无效')
   console.log('当前节点:', treeManager.getCurrentNode()?.name || '无')
   console.log('点位数量:', points.value.length)
+  console.log('全局订阅数量:', {
+    devices: stats.global.devices,
+    groups: stats.global.groups,
+    points: stats.global.points
+  })
+  console.log('处理器注册数量:', stats.handlers)
+  console.log('总页面数:', stats.totalPages)
 }
 
 // 切换调试抽屉
 const toggleDebugDrawer = () => {
   debugDrawerVisible.value = !debugDrawerVisible.value
+  
+  // 如果打开调试抽屉，自动刷新调试信息
+  if (debugDrawerVisible.value) {
+    refreshDebugInfo()
+  }
 }
 </script>
 

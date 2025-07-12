@@ -23,9 +23,8 @@ namespace Wombat.CommGateway.Application.Services
     [AutoInject<ICacheUpdateNotificationService>(ServiceLifetime = ServiceLifetime.Singleton)]
     public class DataCollectionHubService : ICacheUpdateNotificationService
     {
-        private readonly IHubContext<DataCollectionHub> _hubContext;
+        private readonly IDataDistributionService _dataDistributionService;
         private readonly ILogger<DataCollectionHubService> _logger;
-        private readonly IDataPushBus _dataPushBus;
         private readonly Queue<(int PointId, string Value, DataPointStatus Status, DateTime UpdateTime)> _updateQueue;
         private readonly object _queueLock = new object();
         private readonly System.Timers.Timer _batchTimer;
@@ -33,13 +32,11 @@ namespace Wombat.CommGateway.Application.Services
         private const int BatchIntervalMs = 1000; // 1秒
 
         public DataCollectionHubService(
-            IHubContext<DataCollectionHub> hubContext,
-            ILogger<DataCollectionHubService> logger,
-            IDataPushBus dataPushBus)
+            IDataDistributionService dataDistributionService,
+            ILogger<DataCollectionHubService> logger)
         {
-            _hubContext = hubContext ?? throw new ArgumentNullException(nameof(hubContext));
+            _dataDistributionService = dataDistributionService ?? throw new ArgumentNullException(nameof(dataDistributionService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _dataPushBus = dataPushBus ?? throw new ArgumentNullException(nameof(dataPushBus));
             
             _updateQueue = new Queue<(int, string, DataPointStatus, DateTime)>();
             
@@ -49,7 +46,7 @@ namespace Wombat.CommGateway.Application.Services
             _batchTimer.AutoReset = true;
             _batchTimer.Start();
             
-            _logger.LogInformation("DataCollectionHubService 已初始化，批量推送间隔: {BatchIntervalMs}ms", BatchIntervalMs);
+            _logger.LogInformation("DataCollectionHubService 已初始化，使用统一数据分发服务，批量推送间隔: {BatchIntervalMs}ms", BatchIntervalMs);
         }
 
         /// <summary>
@@ -71,20 +68,10 @@ namespace Wombat.CommGateway.Application.Services
                     }
                 }
 
-                // 同时推送单个更新（用于实时性要求高的场景）
-                await PushSinglePointUpdateAsync(pointId, value, status, updateTime);
+                // 通过统一数据分发服务推送更新（同时分发到SignalR和WebSocket）
+                await _dataDistributionService.DistributePointUpdateAsync(pointId, value, status, updateTime);
                 
-                // 发布到WebSocket桥接
-                var message = new
-                {
-                    Type = "PointUpdate",
-                    PointId = pointId,
-                    Value = value,
-                    Status = status.ToString(),
-                    UpdateTime = updateTime
-                };
-                await _dataPushBus.PublishAsync(message);
-                _logger.LogDebug("已发布点位 {PointId} 更新到WebSocket桥接", pointId);
+                _logger.LogDebug("已通过统一分发服务推送点位 {PointId} 更新", pointId);
                 
             }
             catch (Exception ex)
@@ -100,26 +87,12 @@ namespace Wombat.CommGateway.Application.Services
         {
             try
             {
-                var updateList = updates.Select(kvp => new
-                {
-                    PointId = kvp.Key,
-                    Value = kvp.Value.Value,
-                    Status = kvp.Value.Status.ToString(),
-                    UpdateTime = kvp.Value.UpdateTime
-                }).ToList();
-
-                var message = new
-                {
-                    Type = "BatchPointsUpdate",
-                    Updates = updateList,
-                    UpdateTime = DateTime.UtcNow
-                };
-
-                await _hubContext.Clients.All.SendAsync("ReceiveBatchPointsUpdate", message);
-
-                // 发布到WebSocket桥接
-                await _dataPushBus.PublishAsync(message);
-                _logger.LogDebug("已发布批量点位更新到WebSocket桥接，共 {Count} 个点位", updates.Count);
+                _logger.LogInformation($"收到批量点位数据更新通知: {updates.Count} 个点位");
+                
+                // 通过统一数据分发服务推送批量更新（同时分发到SignalR和WebSocket）
+                await _dataDistributionService.DistributeBatchPointsUpdateAsync(updates);
+                
+                _logger.LogInformation($"已通过统一分发服务推送 {updates.Count} 个点位数据更新");
 
             }
             catch (Exception ex)
@@ -135,14 +108,10 @@ namespace Wombat.CommGateway.Application.Services
         {
             try
             {
-                await _hubContext.Clients.All.SendAsync("ReceivePointStatusChange", new
-                {
-                    Type = "PointStatusChange",
-                    PointId = pointId,
-                    Status = status.ToString(),
-                    UpdateTime = DateTime.UtcNow
-                });
-
+                // 通过统一数据分发服务推送状态变更
+                await _dataDistributionService.DistributePointStatusChangeAsync(pointId, status);
+                
+                _logger.LogDebug("已通过统一分发服务推送点位 {PointId} 状态变更", pointId);
             }
             catch (Exception ex)
             {
@@ -157,14 +126,10 @@ namespace Wombat.CommGateway.Application.Services
         {
             try
             {
-                await _hubContext.Clients.All.SendAsync("ReceivePointRemoved", new
-                {
-                    Type = "PointRemoved",
-                    PointId = pointId,
-                    UpdateTime = DateTime.UtcNow
-                });
+                // 通过统一数据分发服务推送点位移除通知
+                await _dataDistributionService.DistributePointRemovedAsync(pointId);
 
-                _logger.LogInformation($"推送点位 {pointId} 移除通知");
+                _logger.LogInformation($"已通过统一分发服务推送点位 {pointId} 移除通知");
             }
             catch (Exception ex)
             {
@@ -181,40 +146,14 @@ namespace Wombat.CommGateway.Application.Services
             {
                 var pointIdList = pointIds.ToList();
                 
-                await _hubContext.Clients.All.SendAsync("ReceiveBatchPointsRemoved", new
-                {
-                    Type = "BatchPointsRemoved",
-                    PointIds = pointIdList,
-                    UpdateTime = DateTime.UtcNow
-                });
+                // 通过统一数据分发服务推送批量点位移除通知
+                await _dataDistributionService.DistributeBatchPointsRemovedAsync(pointIdList);
 
-                _logger.LogInformation($"批量推送 {pointIdList.Count} 个点位移除通知");
+                _logger.LogInformation($"已通过统一分发服务推送 {pointIdList.Count} 个点位移除通知");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"批量推送点位移除通知时发生错误");
-            }
-        }
-
-        /// <summary>
-        /// 推送单个点位更新
-        /// </summary>
-        private async Task PushSinglePointUpdateAsync(int pointId, string value, DataPointStatus status, DateTime updateTime)
-        {
-            try
-            {
-                await _hubContext.Clients.All.SendAsync("ReceivePointUpdate", new
-                {
-                    Type = "PointUpdate",
-                    PointId = pointId,
-                    Value = value,
-                    Status = status.ToString(),
-                    UpdateTime = updateTime
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"推送单个点位 {pointId} 更新时发生错误");
             }
         }
 
@@ -242,21 +181,16 @@ namespace Wombat.CommGateway.Application.Services
 
             try
             {
-                var updateList = batchUpdates.Select(update => new
-                {
-                    PointId = update.PointId,
-                    Value = update.Value,
-                    Status = update.Status.ToString(),
-                    UpdateTime = update.UpdateTime
-                }).ToList();
+                // 转换为Dictionary格式，供统一分发服务使用
+                var updates = batchUpdates.ToDictionary(
+                    update => update.PointId,
+                    update => (update.Value, update.Status, update.UpdateTime)
+                );
 
-                await _hubContext.Clients.All.SendAsync("ReceiveBatchPointsUpdate", new
-                {
-                    Type = "BatchPointsUpdate",
-                    Updates = updateList,
-                    UpdateTime = DateTime.UtcNow
-                });
-
+                // 通过统一数据分发服务推送批量更新
+                await _dataDistributionService.DistributeBatchPointsUpdateAsync(updates);
+                
+                _logger.LogDebug("批量更新队列处理完成，推送了 {Count} 个点位更新", batchUpdates.Count);
             }
             catch (Exception ex)
             {
