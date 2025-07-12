@@ -24,6 +24,7 @@ using Microsoft.AspNetCore.SignalR;
 using Wombat.CommGateway.Application.Interfaces;
 using Wombat.CommGateway.Application.Hubs;
 using Wombat.CommGateway.Application.Services.DataCollection;
+using Wombat.CommGateway.Application.Common.Logging;
 
 
 
@@ -114,6 +115,7 @@ namespace Wombat.CommGateway.API
 
             #endregion
 
+            builder.Services.AddScoped(typeof(IApplicationLogger<>), typeof(ApplicationLogger<>));
             Application.AutoInjectExtension.AddAutoInject(builder.Services);
             Infrastructure.AutoInjectExtension.AddAutoInject(builder.Services);
             Api.AutoInjectExtension.AddAutoInject(builder.Services);
@@ -229,9 +231,13 @@ namespace Wombat.CommGateway.API
 
 
             // 注册SignalR Hub路由，使用特定的CORS策略，强制WebSocket传输
-            // 注意：WsBridgeMiddleware使用/ws/bridge路径，SignalR使用/ws/datacollection路径，避免冲突
-            app.MapHub<DataCollectionHub>("/ws/datacollection")
-               .RequireCors("SignalRPolicy");
+// 注意：WsBridgeMiddleware使用/ws/bridge路径，SignalR使用/ws/datacollection路径，避免冲突
+app.MapHub<DataCollectionHub>("/ws/datacollection")
+   .RequireCors("SignalRPolicy");
+
+// 注册日志Hub路由
+app.MapHub<LoggingHub>("/hubs/log")
+   .RequireCors("SignalRPolicy");
 
 
             #region Swagger

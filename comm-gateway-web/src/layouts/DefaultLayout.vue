@@ -48,11 +48,12 @@
         <el-sub-menu index="/log">
           <template #title>
             <el-icon><Monitor /></el-icon>
-            <span>日志监控</span>
+            <span>日志管理</span>
           </template>
-          <el-menu-item index="/log/index">系统日志</el-menu-item>
-          <el-menu-item index="/log/data">数据日志</el-menu-item>
-          <el-menu-item index="/log/rpc">RPC日志</el-menu-item>
+          <el-menu-item index="/log">日志概览</el-menu-item>
+          <el-menu-item index="/log/system">系统日志</el-menu-item>
+          <el-menu-item index="/log/operation">操作日志</el-menu-item>
+          <el-menu-item index="/log/communication">通信日志</el-menu-item>
         </el-sub-menu>
       </el-menu>
     </el-aside>

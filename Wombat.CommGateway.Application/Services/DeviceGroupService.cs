@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Wombat.Extensions.AutoGenerator.Attributes;
 using Wombat.CommGateway.Application.DTOs;
 using Wombat.CommGateway.Application.Interfaces;
+using Wombat.CommGateway.Application.Common.Logging;
 using Wombat.CommGateway.Domain.Entities;
 using Wombat.CommGateway.Domain.Repositories;
 using Wombat.Infrastructure;
@@ -21,7 +22,7 @@ namespace Wombat.CommGateway.Application.Services
     public class DeviceGroupService : IDeviceGroupService
     {
         private readonly IDeviceGroupRepository _deviceGroupRepository;
-        private readonly ILogger<DeviceGroupService> _logger;
+        private readonly IApplicationLogger<DeviceGroupService> _logger;
         private readonly IMapper _mapper;
 
         /// <summary>
@@ -31,7 +32,7 @@ namespace Wombat.CommGateway.Application.Services
         /// <param name="logger">日志记录器</param>
         public DeviceGroupService(
             IDeviceGroupRepository deviceGroupRepository,
-            ILogger<DeviceGroupService> logger,
+            IApplicationLogger<DeviceGroupService> logger,
             IMapper mapper)
         {
             _deviceGroupRepository = deviceGroupRepository ?? throw new ArgumentNullException(nameof(deviceGroupRepository));
@@ -65,6 +66,14 @@ namespace Wombat.CommGateway.Application.Services
         {
             var deviceGroup = new DeviceGroup(dto.Name, dto.Description);
             await _deviceGroupRepository.InsertAsync(deviceGroup);
+            
+            // 记录操作日志到数据库
+            await _logger.LogOperationAsync(
+                $"创建设备组成功: {dto.Name}", 
+                "Create", 
+                "DeviceGroup", 
+                resourceId: deviceGroup.Id);
+            
             return _mapper.Map<DeviceGroupDto>(deviceGroup);
         }
 
@@ -75,8 +84,18 @@ namespace Wombat.CommGateway.Application.Services
             if (deviceGroup == null)
                 throw new ArgumentException($"DeviceGroup with id {id} not found.");
 
+            var oldName = deviceGroup.Name;
             deviceGroup.UpdateInfo(dto.Name, dto.Description);
-            return await _deviceGroupRepository.UpdateAsync(deviceGroup);
+            var result = await _deviceGroupRepository.UpdateAsync(deviceGroup);
+            
+            // 记录操作日志到数据库
+            await _logger.LogOperationAsync(
+                $"更新设备组成功: {oldName} -> {dto.Name}", 
+                "Update", 
+                "DeviceGroup", 
+                resourceId: id);
+            
+            return result;
         }
 
         /// <inheritdoc/>
@@ -84,9 +103,25 @@ namespace Wombat.CommGateway.Application.Services
         {
             var deviceGroup = await _deviceGroupRepository.GetByIdAsync(id);
             if (deviceGroup == null)
+            {
+                await _logger.LogOperationAsync(
+                    $"删除设备组失败: ID {id} 不存在", 
+                    "Delete", 
+                    "DeviceGroup", 
+                    resourceId: id);
                 return false;
+            }
 
+            var deviceGroupName = deviceGroup.Name;
             await _deviceGroupRepository.DeleteAsync(deviceGroup);
+            
+            // 记录操作日志到数据库
+            await _logger.LogOperationAsync(
+                $"删除设备组成功: {deviceGroupName}", 
+                "Delete", 
+                "DeviceGroup", 
+                resourceId: id);
+            
             return true;
         }
 

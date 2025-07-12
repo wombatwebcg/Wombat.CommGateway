@@ -132,7 +132,7 @@ export const writePoint = (pointId: number, value: any) => {
 
 // WebSocket相关函数 --------------------------------
 
-import { connectionState } from '@/utils/websocket'
+import { connectionState } from '@/utils/signalr-logging'
 
 // WebSocket连接
 let wsConnection: WebSocket | null = null;

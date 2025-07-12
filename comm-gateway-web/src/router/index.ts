@@ -93,44 +93,37 @@ const routes: RouteRecordRaw[] = [
         name: 'Log',
         component: () => import('@/views/log/index.vue'),
         meta: {
-          title: '日志监控',
+          title: '日志管理',
           icon: 'Monitor',
           keepAlive: false
-        },
-        children: [
-          {
-            path: '',
-            name: 'MonitorDefault',
-            redirect: '/monitor/index'
-          },
-          {
-            path: 'index',
-            name: 'SystemLogs',
-            component: () => import('@/views/log/index.vue'),
-            meta: {
-              title: '系统日志',
-              keepAlive: false
-            }
-          },
-          {
-            path: 'data',
-            name: 'DataLogs',
-            component: () => import('@/views/log/data.vue'),
-            meta: {
-              title: '数据日志',
-              keepAlive: false
-            }
-          },
-          {
-            path: 'rpc',
-            name: 'RpcLogs',
-            component: () => import('@/views/log/rpc.vue'),
-            meta: {
-              title: 'RPC日志',
-              keepAlive: false
-            }
-          }
-        ]
+        }
+      },
+      {
+        path: 'log/system',
+        name: 'SystemLogs',
+        component: () => import('@/views/log/SystemLog.vue'),
+        meta: {
+          title: '系统日志',
+          keepAlive: false
+        }
+      },
+      {
+        path: 'log/operation',
+        name: 'OperationLogs',
+        component: () => import('@/views/log/OperationLog.vue'),
+        meta: {
+          title: '操作日志',
+          keepAlive: false
+        }
+      },
+      {
+        path: 'log/communication',
+        name: 'CommunicationLogs',
+        component: () => import('@/views/log/CommunicationLog.vue'),
+        meta: {
+          title: '通信日志',
+          keepAlive: false
+        }
       },
       {
         path: 'point-monitor',

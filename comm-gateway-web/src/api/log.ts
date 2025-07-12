@@ -1,120 +1,211 @@
 import request from '@/utils/request'
-import type { AxiosResponse } from 'axios'
+import type {
+  SystemLog,
+  OperationLog,
+  CommunicationLog,
+  SystemLogQueryParams,
+  OperationLogQueryParams,
+  CommunicationLogQueryParams,
+  LogQueryResult,
+  LogStatistics,
+  LogExportParams
+} from '@/types/log'
 
-// 日志类型定义
-export interface SystemLog {
-  timestamp: string
-  level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG'
-  content: string
+// ============ 系统日志 API ============
+
+// 查询系统日志
+export function getSystemLogs(params: SystemLogQueryParams) {
+  return request<LogQueryResult<SystemLog>>({
+    url: '/api/Log/system',
+    method: 'get',
+    params
+  })
 }
 
-export interface DataLog {
-  timestamp: string
-  deviceName: string
-  tagName: string
-  value: string | number
-  quality: 'GOOD' | 'BAD'
-  description?: string
+// 获取系统日志统计信息
+export function getSystemLogStatistics(startTime?: string, endTime?: string) {
+  return request<LogStatistics>({
+    url: '/api/Log/system/statistics',
+    method: 'get',
+    params: { startTime, endTime }
+  })
 }
 
-export interface RPCLog {
-  timestamp: string
-  method: string
-  request: string
-  response: string
-  status: 'SUCCESS' | 'FAILED'
-  duration: number
-  error?: string
+// 导出系统日志
+export function exportSystemLogs(params: LogExportParams) {
+  return request<Blob>({
+    url: '/api/Log/system/export',
+    method: 'post',
+    data: params,
+    responseType: 'blob'
+  })
 }
 
-// 分页结果类型
-export interface PagedResult<T> {
-  items: T[]
-  total: number
-  page: number
-  pageSize: number
+// 清理系统日志
+export function cleanupSystemLogs(params: {
+  beforeDate?: string
+  level?: number
+  source?: string
+}) {
+  return request<{ deletedCount: number }>({
+    url: '/api/Log/system/cleanup',
+    method: 'delete',
+    data: params
+  })
 }
 
-// 查询参数类型
-export interface LogQueryParams {
-  startTime: string
-  endTime: string
-  page?: number
-  pageSize?: number
+// ============ 操作日志 API ============
+
+// 查询操作日志
+export function getOperationLogs(params: OperationLogQueryParams) {
+  return request<LogQueryResult<OperationLog>>({
+    url: '/api/Log/operation',
+    method: 'get',
+    params
+  })
 }
 
-export interface SystemLogQueryParams extends LogQueryParams {
-  level?: string
-  keyword?: string
+// 获取操作日志统计信息
+export function getOperationLogStatistics(startTime?: string, endTime?: string) {
+  return request<LogStatistics>({
+    url: '/api/Log/operation/statistics',
+    method: 'get',
+    params: { startTime, endTime }
+  })
 }
 
-export interface DataLogQueryParams extends LogQueryParams {
-  deviceName?: string
-  tagName?: string
-  quality?: string
+// 获取操作日志按用户统计
+export function getOperationLogsByUser(startTime?: string, endTime?: string) {
+  return request<Array<{ userId: string; userName: string; count: number }>>({
+    url: '/api/Log/operation/by-user',
+    method: 'get',
+    params: { startTime, endTime }
+  })
 }
 
-export interface RPCLogQueryParams extends LogQueryParams {
-  method?: string
-  status?: string
+// 获取操作日志按动作统计
+export function getOperationLogsByAction(startTime?: string, endTime?: string) {
+  return request<Array<{ action: string; count: number }>>({
+    url: '/api/Log/operation/by-action',
+    method: 'get',
+    params: { startTime, endTime }
+  })
 }
 
-// API请求函数
-export const logApi = {
-  // 获取系统日志
-  getSystemLogs(params: SystemLogQueryParams): Promise<AxiosResponse<PagedResult<SystemLog>>> {
-    return request({
-      url: '/api/log/system',
-      method: 'get',
-      params
-    })
-  },
+// 导出操作日志
+export function exportOperationLogs(params: LogExportParams) {
+  return request<Blob>({
+    url: '/api/Log/operation/export',
+    method: 'post',
+    data: params,
+    responseType: 'blob'
+  })
+}
 
-  // 获取数据日志
-  getDataLogs(params: DataLogQueryParams): Promise<AxiosResponse<PagedResult<DataLog>>> {
-    return request({
-      url: '/api/log/data',
-      method: 'get',
-      params
-    })
-  },
+// 清理操作日志
+export function cleanupOperationLogs(params: {
+  beforeDate?: string
+  level?: number
+  userId?: string
+  action?: string
+}) {
+  return request<{ deletedCount: number }>({
+    url: '/api/Log/operation/cleanup',
+    method: 'delete',
+    data: params
+  })
+}
 
-  // 获取RPC日志
-  getRPCLogs(params: RPCLogQueryParams): Promise<AxiosResponse<PagedResult<RPCLog>>> {
-    return request({
-      url: '/api/log/rpc',
-      method: 'get',
-      params
-    })
-  },
+// ============ 通信日志 API ============
 
-  // 导出系统日志
-  exportSystemLogs(params: Omit<SystemLogQueryParams, 'page' | 'pageSize'>): Promise<AxiosResponse<Blob>> {
-    return request({
-      url: '/api/log/system/export',
-      method: 'get',
-      params,
-      responseType: 'blob'
-    })
-  },
+// 查询通信日志
+export function getCommunicationLogs(params: CommunicationLogQueryParams) {
+  return request<LogQueryResult<CommunicationLog>>({
+    url: '/api/Log/communication',
+    method: 'get',
+    params
+  })
+}
 
-  // 导出数据日志
-  exportDataLogs(params: Omit<DataLogQueryParams, 'page' | 'pageSize'>): Promise<AxiosResponse<Blob>> {
-    return request({
-      url: '/api/log/data/export',
-      method: 'get',
-      params,
-      responseType: 'blob'
-    })
-  },
+// 获取通信日志统计信息
+export function getCommunicationLogStatistics(startTime?: string, endTime?: string) {
+  return request<LogStatistics>({
+    url: '/api/Log/communication/statistics',
+    method: 'get',
+    params: { startTime, endTime }
+  })
+}
 
-  // 导出RPC日志
-  exportRPCLogs(params: Omit<RPCLogQueryParams, 'page' | 'pageSize'>): Promise<AxiosResponse<Blob>> {
-    return request({
-      url: '/api/log/rpc/export',
-      method: 'get',
-      params,
-      responseType: 'blob'
-    })
-  }
+// 获取通信日志按通道统计
+export function getCommunicationLogsByChannel(startTime?: string, endTime?: string) {
+  return request<Array<{ channel: string; count: number; avgResponseTime: number }>>({
+    url: '/api/Log/communication/by-channel',
+    method: 'get',
+    params: { startTime, endTime }
+  })
+}
+
+// 获取通信日志响应时间统计
+export function getCommunicationResponseTimeStats(channel?: string, startTime?: string, endTime?: string) {
+  return request<{
+    avgResponseTime: number
+    maxResponseTime: number
+    minResponseTime: number
+    p95ResponseTime: number
+  }>({
+    url: '/api/Log/communication/response-time',
+    method: 'get',
+    params: { channel, startTime, endTime }
+  })
+}
+
+// 导出通信日志
+export function exportCommunicationLogs(params: LogExportParams) {
+  return request<Blob>({
+    url: '/api/Log/communication/export',
+    method: 'post',
+    data: params,
+    responseType: 'blob'
+  })
+}
+
+// 清理通信日志
+export function cleanupCommunicationLogs(params: {
+  beforeDate?: string
+  level?: number
+  channel?: string
+  deviceId?: string
+}) {
+  return request<{ deletedCount: number }>({
+    url: '/api/Log/communication/cleanup',
+    method: 'delete',
+    data: params
+  })
+}
+
+// ============ 通用日志 API ============
+
+// 获取所有日志类型的统计概览
+export function getLogOverviewStatistics() {
+  return request<{
+    systemLogs: LogStatistics
+    operationLogs: LogStatistics
+    communicationLogs: LogStatistics
+  }>({
+    url: '/api/Log/overview',
+    method: 'get'
+  })
+}
+
+// 搜索所有类型的日志
+export function searchAllLogs(keyword: string, limit = 100) {
+  return request<{
+    systemLogs: SystemLog[]
+    operationLogs: OperationLog[]
+    communicationLogs: CommunicationLog[]
+  }>({
+    url: '/api/Log/search',
+    method: 'get',
+    params: { keyword, limit }
+  })
 } 
