@@ -1,0 +1,6 @@
+@Wombat.CommGateway.Web_HostAddress = http://localhost:5215
+
+GET {{Wombat.CommGateway.Web_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

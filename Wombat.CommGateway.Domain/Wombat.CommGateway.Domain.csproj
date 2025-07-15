@@ -9,15 +9,11 @@
 
 	<ItemGroup>
 		<PackageReference Include="System.ComponentModel.Annotations" Version="5.0.0" />
-		<PackageReference Include="Wombat.Extensions.AutoGenerator" Version="1.0.5" />
+		<PackageReference Include="Wombat.Extensions.AutoGenerator" Version="1.0.6" />
 		<PackageReference Include="Wombat.Extensions.AutoGenerator.Attributes" Version="1.0.3" />
 		<PackageReference Include="Wombat.Extensions.FreeSql" Version="1.0.5" />
+		<PackageReference Include="Wombat.IndustrialCommunication" Version="2.1.16" />
 		<PackageReference Include="Wombat.Infrastructure" Version="2.0.23" />
 		<PackageReference Include="Wombat.Network" Version="1.1.5" />
-	</ItemGroup>
-
-
-	<ItemGroup>
-	  <ProjectReference Include="..\..\Wombat.IndustrialCommunication\Wombat.IndustrialCommunication\Wombat.IndustrialCommunication\Wombat.IndustrialCommunication.csproj" />
 	</ItemGroup>
 </Project>

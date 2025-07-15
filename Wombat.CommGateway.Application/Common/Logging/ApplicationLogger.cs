@@ -19,6 +19,8 @@ namespace Wombat.CommGateway.Application.Common.Logging
     /// </summary>
     /// <typeparam name="T">日志类型</typeparam>
     /// 
+
+    [AutoInject(typeof(IApplicationLogger<>))]
     public class ApplicationLogger<T> : IApplicationLogger<T>
     {
         private readonly ILogger<T> _logger;

@@ -115,7 +115,7 @@ namespace Wombat.CommGateway.API
 
             #endregion
 
-            builder.Services.AddScoped(typeof(IApplicationLogger<>), typeof(ApplicationLogger<>));
+            //builder.Services.AddScoped(typeof(IApplicationLogger<>), typeof(ApplicationLogger<>));
             Application.AutoInjectExtension.AddAutoInject(builder.Services);
             Infrastructure.AutoInjectExtension.AddAutoInject(builder.Services);
             Api.AutoInjectExtension.AddAutoInject(builder.Services);
