@@ -161,6 +161,9 @@
           <span>调试信息</span>
           <div class="debug-drawer__actions">
             <el-button size="small" @click="refreshDebugInfo">刷新</el-button>
+            <el-button size="small" @click="querySubscriptionStatus">订阅状态</el-button>
+            <el-button size="small" @click="queryConnectionStatistics">连接统计</el-button>
+            <el-button size="small" @click="refreshHierarchyCache">刷新层级缓存</el-button>
             <el-button size="small" @click="toggleDebugDrawer">关闭</el-button>
           </div>
         </div>
@@ -219,6 +222,18 @@
             <p><strong>重复推送:</strong> <span style="color: #67c23a;">已消除</span></p>
           </div>
         </div>
+        <div class="debug-section" v-if="subscriptionStatus">
+          <h4>详细订阅状态</h4>
+          <pre style="font-size:12px;white-space:pre-wrap;">{{ JSON.stringify(subscriptionStatus, null, 2) }}</pre>
+        </div>
+        <div class="debug-section" v-if="connectionStatistics">
+          <h4>连接统计</h4>
+          <pre style="font-size:12px;white-space:pre-wrap;">{{ JSON.stringify(connectionStatistics, null, 2) }}</pre>
+        </div>
+        <div class="debug-section" v-if="hierarchyCacheResult">
+          <h4>层级缓存刷新结果</h4>
+          <pre style="font-size:12px;white-space:pre-wrap;">{{ JSON.stringify(hierarchyCacheResult, null, 2) }}</pre>
+        </div>
       </div>
     </div>
   </div>
@@ -241,6 +256,7 @@ import { CreateDevicePointDto, DataType, ReadWriteType, DataPointStatus } from '
 import type { Device } from '@/api/device'
 import type { DeviceGroupDto } from '@/api/deviceGroup'
 import { dataCollectionSignalR } from '@/utils/signalr-datacollection'
+import type { SubscriptionStatus, ConnectionStatistics, HierarchyCacheResult } from '@/utils/signalr-datacollection'
 
 // API 响应类型定义
 interface PaginatedResponse<T> {
@@ -601,43 +617,9 @@ const handleNodeClick = async (data: TreeNode) => {
 // 连接状态
 const connectionStatus = ref('Disconnected')
 
-// 页面生命周期管理
-const handlePageActivated = async () => {
-  console.log('📄 Page activated:', pageId)
-  
-  // 设置当前页面ID
-  dataCollectionSignalR.setCurrentPage(pageId)
-  
-  // 检查连接状态
-  const state = dataCollectionSignalR.getConnectionState()
-  if (state === 'Disconnected') {
-    console.log('🔄 Page activated but connection disconnected, attempting to reconnect')
-    try {
-      await dataCollectionSignalR.connect()
-      console.log('✅ Reconnected after page activation')
-      
-      // 重新订阅当前节点
-      await subscribeToCurrentNode()
-    } catch (error) {
-      console.error('❌ Failed to reconnect after page activation:', error)
-    }
-  } else {
-    // 如果连接正常，重新订阅当前节点
-    await subscribeToCurrentNode()
-  }
-}
+// 页面生命周期管理已移到onActivated/onDeactivated生命周期钩子中
 
-const handlePageDeactivated = async () => {
-  console.log('📄 Page deactivated:', pageId)
-  
-  // 清理当前页面的订阅
-  try {
-    await dataCollectionSignalR.clearPageSubscriptions(pageId)
-    console.log('✅ Page subscriptions cleared on deactivation')
-  } catch (error) {
-    console.error('❌ Error clearing page subscriptions on deactivation:', error)
-  }
-}
+// handlePageDeactivated函数已移除，逻辑已合并到onDeactivated生命周期钩子中
 
 // 监听连接状态变化
 const updateConnectionStatus = () => {
@@ -767,19 +749,78 @@ onMounted(async () => {
 })
 
 // 页面激活时重新建立订阅
-onActivated(() => {
-  handlePageActivated()
+onActivated(async () => {
+  console.log('📄 Page activated, checking connection and restoring subscriptions')
+  
+  // 设置当前页面ID
+  dataCollectionSignalR.setCurrentPage(pageId)
+  
+  // 检查连接状态
+  const connectionState = dataCollectionSignalR.getConnectionState()
+  console.log('🔍 Current connection state:', connectionState)
+  
+  // 如果连接断开，尝试重连
+  if (connectionState === 'Disconnected') {
+    console.log('🔄 Connection disconnected, attempting to reconnect')
+    try {
+      await dataCollectionSignalR.connect()
+      console.log('✅ Successfully reconnected after page activation')
+    } catch (error) {
+      console.error('❌ Failed to reconnect after page activation:', error)
+      ElMessage.error('连接失败，请刷新页面重试')
+      return
+    }
+  }
+  
+  // 先清理可能存在的旧处理器，再重新注册
+  dataCollectionSignalR.removePointUpdateHandler(pageId)
+  dataCollectionSignalR.removeBatchPointsUpdateHandler(pageId)
+  dataCollectionSignalR.removePointStatusChangeHandler(pageId)
+  dataCollectionSignalR.removePointRemovedHandler(pageId)
+  dataCollectionSignalR.removeBatchPointsRemovedHandler(pageId)
+  
+  // 重新注册事件处理器
+  dataCollectionSignalR.addPointUpdateHandler(pageId, handlePointUpdate)
+  dataCollectionSignalR.addBatchPointsUpdateHandler(pageId, handleBatchPointsUpdate)
+  dataCollectionSignalR.addPointStatusChangeHandler(pageId, handlePointStatusChange)
+  dataCollectionSignalR.addPointRemovedHandler(pageId, handlePointRemoved)
+  dataCollectionSignalR.addBatchPointsRemovedHandler(pageId, handleBatchPointsRemoved)
+  
+  // 重新订阅当前节点
+  await subscribeToCurrentNode()
+  
+  // 验证订阅状态
+  const isValidSubscription = dataCollectionSignalR.validateSubscriptions()
+  console.log('🔍 Subscription validation result:', isValidSubscription)
+  
+  if (!isValidSubscription) {
+    console.log('⚠️ Invalid subscription detected, attempting to resubscribe')
+    await subscribeToCurrentNode()
+  }
+  
+  console.log('✅ Page activation completed successfully')
 })
 
 // 页面失活时清理订阅
-onDeactivated(() => {
-  handlePageDeactivated()
+onDeactivated(async () => {
+  console.log('📄 Page deactivated, cleaning up subscriptions but keeping connection alive')
+  
+  // 清理当前页面的订阅
+  try {
+    await dataCollectionSignalR.clearPageSubscriptions(pageId)
+    console.log('✅ Page subscriptions cleared on deactivation')
+  } catch (error) {
+    console.error('❌ Error clearing page subscriptions on deactivation:', error)
+  }
+  
   // 注销多页面SignalR推送handler
   dataCollectionSignalR.removePointUpdateHandler(pageId)
   dataCollectionSignalR.removeBatchPointsUpdateHandler(pageId)
   dataCollectionSignalR.removePointStatusChangeHandler(pageId)
   dataCollectionSignalR.removePointRemovedHandler(pageId)
   dataCollectionSignalR.removeBatchPointsRemovedHandler(pageId)
+  
+  console.log('✅ Page deactivated cleanup completed, SignalR connection maintained')
 })
 
 onUnmounted(async () => {
@@ -793,19 +834,16 @@ onUnmounted(async () => {
     console.error('❌ Error clearing page subscriptions on unmount:', error)
   }
   
-  // 断开SignalR连接
-  try {
-    await dataCollectionSignalR.disconnect()
-    console.log('SignalR连接已断开')
-  } catch (error) {
-    console.error('断开SignalR连接失败:', error)
-  }
   // 注销多页面SignalR推送handler
   dataCollectionSignalR.removePointUpdateHandler(pageId)
   dataCollectionSignalR.removeBatchPointsUpdateHandler(pageId)
   dataCollectionSignalR.removePointStatusChangeHandler(pageId)
   dataCollectionSignalR.removePointRemovedHandler(pageId)
   dataCollectionSignalR.removeBatchPointsRemovedHandler(pageId)
+  
+  // 注意：不再在这里断开SignalR连接，让其他页面继续使用
+  // 连接将在应用关闭时自动断开
+  console.log('✅ Page resources cleaned up, SignalR connection kept alive for other pages')
 })
 
 // 查询参数
@@ -932,26 +970,32 @@ const handlePointUpdate = (data: any) => {
     // 非本页面推送，忽略
     return;
   }
+  
   console.log('🔄 Processing single point update:', {
     timestamp: new Date().toISOString(),
     receivedData: data,
-    pointId: data?.pointId,
-    value: data?.value,
-    status: data?.status,
-    updateTime: data?.updateTime
+    pointId: data?.PointId || data?.pointId,
+    value: data?.Value || data?.value,
+    status: data?.Status || data?.status,
+    updateTime: data?.UpdateTime || data?.updateTime
   })
   
-  const pointIndex = points.value.findIndex(p => p.id === data.pointId)
-  console.log('📍 Point found in list:', {
-    pointId: data?.pointId,
+  const pointId = data?.PointId || data?.pointId
+  const pointIndex = points.value.findIndex(p => p.id === pointId)
+  
+  console.log('📍 Point lookup result:', {
+    pointId: pointId,
     found: pointIndex !== -1,
     index: pointIndex,
-    totalPoints: points.value.length
+    totalPoints: points.value.length,
+    currentNodeType: treeManager.getCurrentNode()?.nodeType,
+    currentNodeId: treeManager.getCurrentNode()?.id,
+    pointsInCurrentView: points.value.map(p => ({ id: p.id, name: p.name, deviceId: p.deviceId }))
   })
   
   if (pointIndex !== -1) {
     // 处理状态值，确保是数字类型
-    let statusValue = data.status
+    let statusValue = data?.Status || data?.status
     if (typeof statusValue === 'string') {
       // 如果是字符串，尝试转换为数字
       if (statusValue === 'Good' || statusValue === '1') {
@@ -974,26 +1018,34 @@ const handlePointUpdate = (data: any) => {
     const originalPoint = points.value[pointIndex]
     const updatedPoint = {
       ...originalPoint,
-      value: data.value || '', // 确保value字段有值
+      value: data?.Value || data?.value || '', // 确保value字段有值
       status: statusValue,
-      updateTime: data.updateTime || new Date().toISOString()
+      updateTime: data?.UpdateTime || data?.updateTime || new Date().toISOString()
     }
     
     console.log('📝 Updating point with real-time value:', {
-      pointId: data.pointId,
+      pointId: pointId,
       originalValue: originalPoint.value,
-      newValue: data.value,
+      newValue: data?.Value || data?.value,
       originalStatus: originalPoint.status,
       newStatus: statusValue,
       statusType: typeof statusValue,
-      updateTime: data.updateTime
+      statusString: statusMap[statusValue as DataPointStatus] || '未知',
+      updateTime: data?.UpdateTime || data?.updateTime,
+      deviceId: originalPoint.deviceId,
+      deviceName: originalPoint.deviceName
     })
     
     points.value.splice(pointIndex, 1, updatedPoint)
     lastUpdateTime.value = new Date().toLocaleTimeString()
     console.log('✅ Point updated successfully with real-time data')
   } else {
-    console.log('⚠️ Point not found in current list:', data.pointId)
+    console.log('⚠️ Point not found in current list:', {
+      pointId: pointId,
+      currentPoints: points.value.map(p => p.id),
+      currentNode: treeManager.getCurrentNode()?.name,
+      receivedData: data
+    })
   }
 }
 
@@ -1004,9 +1056,12 @@ const handleBatchPointsUpdate = (updates: any[]) => {
     // 非本页面推送，忽略
     return;
   }
+  
   console.log('🔄 Processing batch points update:', {
     timestamp: new Date().toISOString(),
     updatesCount: updates.length,
+    currentNodeType: treeManager.getCurrentNode()?.nodeType,
+    currentNodeId: treeManager.getCurrentNode()?.id,
     updates: updates
   })
   
@@ -1015,16 +1070,18 @@ const handleBatchPointsUpdate = (updates: any[]) => {
   
   updates.forEach((update, index) => {
     console.log(`📦 Processing update ${index + 1}/${updates.length}:`, {
-      pointId: update?.pointId,
-      value: update?.value,
-      status: update?.status,
-      updateTime: update?.updateTime
+      pointId: update?.PointId || update?.pointId,
+      value: update?.Value || update?.value,
+      status: update?.Status || update?.status,
+      updateTime: update?.UpdateTime || update?.updateTime
     })
     
-    const pointIndex = points.value.findIndex(p => p.id === update.pointId)
+    const pointId = update?.PointId || update?.pointId
+    const pointIndex = points.value.findIndex(p => p.id === pointId)
+    
     if (pointIndex !== -1) {
       // 处理状态值，确保是数字类型
-      let statusValue = update.status
+      let statusValue = update?.Status || update?.status
       if (typeof statusValue === 'string') {
         // 如果是字符串，尝试转换为数字
         if (statusValue === 'Good' || statusValue === '1') {
@@ -1046,24 +1103,31 @@ const handleBatchPointsUpdate = (updates: any[]) => {
       const originalPoint = points.value[pointIndex]
       const updatedPoint = {
         ...originalPoint,
-        value: update.value || '', // 确保value字段有值
+        value: update?.Value || update?.value || '', // 确保value字段有值
         status: statusValue,
-        updateTime: update.updateTime || new Date().toISOString()
+        updateTime: update?.UpdateTime || update?.updateTime || new Date().toISOString()
       }
       
-      console.log(`📝 Updating point ${update.pointId} with real-time value:`, {
+      console.log(`📝 Updating point ${pointId} with real-time value:`, {
         originalValue: originalPoint.value,
-        newValue: update.value,
+        newValue: update?.Value || update?.value,
         originalStatus: originalPoint.status,
         newStatus: statusValue,
         statusType: typeof statusValue,
-        updateTime: update.updateTime
+        statusString: statusMap[statusValue as DataPointStatus] || '未知',
+        updateTime: update?.UpdateTime || update?.updateTime,
+        deviceId: originalPoint.deviceId,
+        deviceName: originalPoint.deviceName
       })
       
       points.value.splice(pointIndex, 1, updatedPoint)
       updatedCount++
     } else {
-      console.log(`⚠️ Point ${update.pointId} not found in current list`)
+      console.log(`⚠️ Point ${pointId} not found in current list:`, {
+        pointId: pointId,
+        currentPoints: points.value.map(p => p.id),
+        currentNode: treeManager.getCurrentNode()?.name
+      })
       notFoundCount++
     }
   })
@@ -1071,7 +1135,9 @@ const handleBatchPointsUpdate = (updates: any[]) => {
   console.log('✅ Batch update completed:', {
     totalUpdates: updates.length,
     updatedCount: updatedCount,
-    notFoundCount: notFoundCount
+    notFoundCount: notFoundCount,
+    currentNodeType: treeManager.getCurrentNode()?.nodeType,
+    currentNodeId: treeManager.getCurrentNode()?.id
   })
   
   // 更新最后更新时间
@@ -1089,30 +1155,31 @@ const handlePointStatusChange = (data: any) => {
   console.log('🔄 Processing point status change:', {
     timestamp: new Date().toISOString(),
     receivedData: data,
-    pointId: data?.pointId,
-    newStatus: data?.status,
-    updateTime: data?.updateTime
+    pointId: data?.PointId || data?.pointId,
+    newStatus: data?.Status || data?.status,
+    updateTime: data?.UpdateTime || data?.updateTime
   })
   
-  const pointIndex = points.value.findIndex(p => p.id === data.pointId)
+  const pointId = data?.PointId || data?.pointId
+  const pointIndex = points.value.findIndex(p => p.id === pointId)
   if (pointIndex !== -1) {
     const originalPoint = points.value[pointIndex]
     const updatedPoint = {
       ...originalPoint,
-      status: data.status,
-      updateTime: data.updateTime
+      status: data?.Status || data?.status,
+      updateTime: data?.UpdateTime || data?.updateTime
     }
     
     console.log('📝 Updating point status:', {
-      pointId: data.pointId,
+      pointId: pointId,
       originalStatus: originalPoint.status,
-      newStatus: data.status
+      newStatus: data?.Status || data?.status
     })
     
     points.value.splice(pointIndex, 1, updatedPoint)
     console.log('✅ Point status updated successfully')
   } else {
-    console.log('⚠️ Point not found for status change:', data.pointId)
+    console.log('⚠️ Point not found for status change:', pointId)
   }
 }
 
@@ -1125,15 +1192,16 @@ const handlePointRemoved = (data: any) => {
   console.log('🔄 Processing point removed:', {
     timestamp: new Date().toISOString(),
     receivedData: data,
-    pointId: data?.pointId,
-    updateTime: data?.updateTime
+    pointId: data?.PointId || data?.pointId,
+    updateTime: data?.UpdateTime || data?.updateTime
   })
   
-  const pointIndex = points.value.findIndex(p => p.id === data.pointId)
+  const pointId = data?.PointId || data?.pointId
+  const pointIndex = points.value.findIndex(p => p.id === pointId)
   if (pointIndex !== -1) {
     const removedPoint = points.value[pointIndex]
     console.log('🗑️ Removing point:', {
-      pointId: data.pointId,
+      pointId: pointId,
       pointName: removedPoint.name,
       pointValue: removedPoint.value
     })
@@ -1142,7 +1210,7 @@ const handlePointRemoved = (data: any) => {
     total.value--
     console.log('✅ Point removed successfully, new total:', total.value)
   } else {
-    console.log('⚠️ Point not found for removal:', data.pointId)
+    console.log('⚠️ Point not found for removal:', pointId)
   }
 }
 
@@ -1155,11 +1223,11 @@ const handleBatchPointsRemoved = (data: any) => {
   console.log('🔄 Processing batch points removed:', {
     timestamp: new Date().toISOString(),
     receivedData: data,
-    pointIds: data?.pointIds || [],
-    updateTime: data?.updateTime
+    pointIds: data?.PointIds || data?.pointIds || [],
+    updateTime: data?.UpdateTime || data?.updateTime
   })
   
-  const removedIds = data.pointIds || []
+  const removedIds = data?.PointIds || data?.pointIds || []
   let removedCount = 0
   let notFoundCount = 0
   
@@ -1312,6 +1380,24 @@ const toggleDebugDrawer = () => {
   if (debugDrawerVisible.value) {
     refreshDebugInfo()
   }
+}
+
+// 3. <script setup>中添加响应式数据和方法
+const subscriptionStatus = ref<SubscriptionStatus | null>(null)
+const connectionStatistics = ref<ConnectionStatistics | null>(null)
+const hierarchyCacheResult = ref<HierarchyCacheResult | null>(null)
+
+const querySubscriptionStatus = async () => {
+  subscriptionStatus.value = await dataCollectionSignalR.getSubscriptionStatus()
+  if (!subscriptionStatus.value) ElMessage.warning('获取订阅状态失败')
+}
+const queryConnectionStatistics = async () => {
+  connectionStatistics.value = await dataCollectionSignalR.getConnectionStatistics()
+  if (!connectionStatistics.value) ElMessage.warning('获取连接统计失败')
+}
+const refreshHierarchyCache = async () => {
+  hierarchyCacheResult.value = await dataCollectionSignalR.refreshHierarchyCache()
+  if (!hierarchyCacheResult.value?.success) ElMessage.warning('层级缓存刷新失败')
 }
 </script>
 

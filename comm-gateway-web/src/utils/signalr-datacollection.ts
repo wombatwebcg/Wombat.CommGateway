@@ -1,44 +1,83 @@
 import { HubConnectionBuilder, HubConnection, LogLevel } from '@microsoft/signalr'
 
-// SignalR消息类型定义
+// SignalR消息类型定义 - 根据后台实际推送格式调整
 interface PointUpdateData {
-  type: string
-  pointId: number
+  type?: string  // 可选的消息类型字段
+  pointId: number  // 后台实际推送的是小写字段
   value: string
   status: string
   updateTime: string
 }
 
 interface PointUpdateItem {
-  pointId: number
+  pointId: number  // 后台实际推送的是小写字段
   value: string
   status: string
   updateTime: string
 }
 
 interface BatchPointsUpdateMessage {
-  type: string
+  type?: string  // 可选的消息类型字段
   updates: PointUpdateItem[]
   updateTime: string
+  count?: number  // 可选的计数字段
 }
 
 interface PointStatusChangeData {
-  type: string
+  type?: string  // 可选的消息类型字段
   pointId: number
   status: string
   updateTime: string
 }
 
 interface PointRemovedData {
-  type: string
+  type?: string  // 可选的消息类型字段
   pointId: number
   updateTime: string
 }
 
 interface BatchPointsRemovedData {
-  type: string
+  type?: string  // 可选的消息类型字段
   pointIds: number[]
   updateTime: string
+}
+
+// 新增：订阅状态信息类型
+interface SubscriptionStatus {
+  connectionId: string
+  totalSubscriptions: number
+  groupSubscriptions: number[]
+  deviceSubscriptions: number[]
+  pointSubscriptions: number[]
+  lastActivityTime: string
+}
+
+// 新增：连接统计信息类型
+interface ConnectionStatistics {
+  totalConnections: number
+  totalSubscriptions: number
+  groupSubscriptions: number
+  deviceSubscriptions: number
+  pointSubscriptions: number
+  connectionIds: string[]
+}
+
+// 新增：层级缓存刷新结果类型
+interface HierarchyCacheResult {
+  success: boolean
+  message: string
+}
+
+// 新增：订阅确认消息类型
+interface SubscriptionConfirmed {
+  type: 'Device' | 'Group' | 'Point'
+  id: number
+}
+
+// 新增：取消订阅确认消息类型
+interface UnsubscriptionConfirmed {
+  type: 'Device' | 'Group' | 'Point'
+  id: number
 }
 
 // 页面订阅信息
@@ -62,6 +101,13 @@ class DataCollectionSignalR {
   private pointStatusChangeHandlers: Map<string, (data: any) => void> = new Map()
   private pointRemovedHandlers: Map<string, (data: any) => void> = new Map()
   private batchPointsRemovedHandlers: Map<string, (data: any) => void> = new Map()
+  
+  // 新增：订阅确认回调
+  private subscriptionConfirmedHandlers: Map<string, (data: SubscriptionConfirmed) => void> = new Map()
+  private unsubscriptionConfirmedHandlers: Map<string, (data: UnsubscriptionConfirmed) => void> = new Map()
+  private subscriptionStatusHandlers: Map<string, (data: SubscriptionStatus) => void> = new Map()
+  private connectionStatisticsHandlers: Map<string, (data: ConnectionStatistics) => void> = new Map()
+  private hierarchyCacheHandlers: Map<string, (data: HierarchyCacheResult) => void> = new Map()
   
   // 全局订阅状态管理
   private currentSubscriptions: {
@@ -227,6 +273,99 @@ class DataCollectionSignalR {
     }
   }
 
+  // 新增：获取当前连接的订阅状态
+  async getSubscriptionStatus(): Promise<SubscriptionStatus | null> {
+    if (!this.connection || this.connection.state !== 'Connected') {
+      console.log('⚠️ Cannot get subscription status: connection not ready')
+      return null
+    }
+
+    try {
+      await this.connection.invoke('GetSubscriptionStatus')
+      console.log('📊 Subscription status request sent')
+      
+      // 返回一个Promise，等待服务器响应
+      return new Promise((resolve) => {
+        const handler = (data: SubscriptionStatus) => {
+          this.subscriptionStatusHandlers.delete('temp')
+          resolve(data)
+        }
+        this.subscriptionStatusHandlers.set('temp', handler)
+        
+        // 设置超时
+        setTimeout(() => {
+          this.subscriptionStatusHandlers.delete('temp')
+          resolve(null)
+        }, 5000)
+      })
+    } catch (error) {
+      console.error('❌ Failed to get subscription status:', error)
+      return null
+    }
+  }
+
+  // 新增：获取连接统计信息
+  async getConnectionStatistics(): Promise<ConnectionStatistics | null> {
+    if (!this.connection || this.connection.state !== 'Connected') {
+      console.log('⚠️ Cannot get connection statistics: connection not ready')
+      return null
+    }
+
+    try {
+      await this.connection.invoke('GetConnectionStatistics')
+      console.log('📊 Connection statistics request sent')
+      
+      // 返回一个Promise，等待服务器响应
+      return new Promise((resolve) => {
+        const handler = (data: ConnectionStatistics) => {
+          this.connectionStatisticsHandlers.delete('temp')
+          resolve(data)
+        }
+        this.connectionStatisticsHandlers.set('temp', handler)
+        
+        // 设置超时
+        setTimeout(() => {
+          this.connectionStatisticsHandlers.delete('temp')
+          resolve(null)
+        }, 5000)
+      })
+    } catch (error) {
+      console.error('❌ Failed to get connection statistics:', error)
+      return null
+    }
+  }
+
+  // 新增：刷新层级关系缓存
+  async refreshHierarchyCache(): Promise<HierarchyCacheResult | null> {
+    if (!this.connection || this.connection.state !== 'Connected') {
+      console.log('⚠️ Cannot refresh hierarchy cache: connection not ready')
+      return null
+    }
+
+    try {
+      await this.connection.invoke('RefreshHierarchyCache')
+      console.log('🔄 Hierarchy cache refresh request sent')
+      
+      // 返回一个Promise，等待服务器响应
+      return new Promise((resolve) => {
+        const handler = (data: HierarchyCacheResult) => {
+          this.hierarchyCacheHandlers.delete('temp')
+          resolve(data)
+        }
+        this.hierarchyCacheHandlers.set('temp', handler)
+        
+        // 设置超时
+        setTimeout(() => {
+          this.hierarchyCacheHandlers.delete('temp')
+          resolve(null)
+        }, 10000) // 缓存刷新可能需要更长时间
+      })
+    } catch (error) {
+      console.error('❌ Failed to refresh hierarchy cache:', error)
+      return null
+    }
+  }
+
   async connect() {
     if (this.connection) return
     
@@ -281,9 +420,9 @@ class DataCollectionSignalR {
             data: data,
             dataType: typeof data,
             dataKeys: data ? Object.keys(data) : [],
-            pointId: data?.pointId,
-            value: data?.value,
-            status: data?.status
+            pointId: (data as any)?.pointId || (data as any)?.PointId,
+            value: (data as any)?.value || (data as any)?.Value,
+            status: (data as any)?.status || (data as any)?.Status
           })
         }
         
@@ -306,9 +445,9 @@ class DataCollectionSignalR {
             timestamp: new Date().toISOString(),
             message: msg,
             messageType: typeof msg,
-            hasUpdates: msg && Array.isArray(msg.updates || (msg as any).Updates),
-            updatesCount: (msg.updates || (msg as any).Updates)?.length || 0,
-            updates: msg.updates || (msg as any).Updates || []
+            hasUpdates: msg && Array.isArray((msg as any).updates || (msg as any).Updates),
+            updatesCount: ((msg as any).updates || (msg as any).Updates)?.length || 0,
+            updates: (msg as any).updates || (msg as any).Updates || []
           })
         }
         
@@ -320,7 +459,7 @@ class DataCollectionSignalR {
         this.debugBatchPointsUpdateMessage(msg)
         
         // 尝试处理可能的格式变化
-        const updates = msg?.updates || msg?.Updates
+        const updates = (msg as any)?.updates || (msg as any)?.Updates
         if (updates && Array.isArray(updates)) {
           console.log('⚠️ Fallback: Processing batch update with non-standard format')
           const normalizedUpdates = this.normalizeBatchPointsUpdateData(msg)
@@ -334,8 +473,8 @@ class DataCollectionSignalR {
       console.log('📡 SignalR received point status change (优化架构):', {
         timestamp: new Date().toISOString(),
         data: data,
-        pointId: data?.PointId || data?.pointId,
-        status: data?.Status || data?.status
+        pointId: data?.pointId || data?.PointId,
+        status: data?.status || data?.Status
       })
       
       // 验证数据格式
@@ -374,6 +513,32 @@ class DataCollectionSignalR {
       } else {
         console.error('❌ Invalid batch points removed data format:', data)
       }
+    })
+
+    // 新增：订阅确认消息监听
+    this.connection.on('SubscriptionConfirmed', (data: SubscriptionConfirmed) => {
+      console.log('✅ Subscription confirmed:', data)
+      this.subscriptionConfirmedHandlers.forEach(handler => handler(data))
+    })
+
+    this.connection.on('UnsubscriptionConfirmed', (data: UnsubscriptionConfirmed) => {
+      console.log('✅ Unsubscription confirmed:', data)
+      this.unsubscriptionConfirmedHandlers.forEach(handler => handler(data))
+    })
+
+    this.connection.on('SubscriptionStatus', (data: SubscriptionStatus) => {
+      console.log('📊 Subscription status received:', data)
+      this.subscriptionStatusHandlers.forEach(handler => handler(data))
+    })
+
+    this.connection.on('ConnectionStatistics', (data: ConnectionStatistics) => {
+      console.log('📊 Connection statistics received:', data)
+      this.connectionStatisticsHandlers.forEach(handler => handler(data))
+    })
+
+    this.connection.on('HierarchyCacheRefreshed', (data: HierarchyCacheResult) => {
+      console.log('🔄 Hierarchy cache refresh result:', data)
+      this.hierarchyCacheHandlers.forEach(handler => handler(data))
     })
 
     try {
@@ -418,6 +583,20 @@ class DataCollectionSignalR {
   }
   public removeBatchPointsRemovedHandler(pageId: string) {
     this.batchPointsRemovedHandlers.delete(pageId)
+  }
+
+  // 新增：订阅确认回调注册/注销API
+  public addSubscriptionConfirmedHandler(pageId: string, handler: (data: SubscriptionConfirmed) => void) {
+    this.subscriptionConfirmedHandlers.set(pageId, handler)
+  }
+  public removeSubscriptionConfirmedHandler(pageId: string) {
+    this.subscriptionConfirmedHandlers.delete(pageId)
+  }
+  public addUnsubscriptionConfirmedHandler(pageId: string, handler: (data: UnsubscriptionConfirmed) => void) {
+    this.unsubscriptionConfirmedHandlers.set(pageId, handler)
+  }
+  public removeUnsubscriptionConfirmedHandler(pageId: string) {
+    this.unsubscriptionConfirmedHandlers.delete(pageId)
   }
 
   async subscribeDevice(deviceId: number) {
@@ -653,46 +832,44 @@ class DataCollectionSignalR {
   // 标准化点位更新数据格式，处理后端可能的大小写变化
   private normalizePointUpdateData(data: any): PointUpdateData {
     return {
-      type: data.Type || data.type || 'PointUpdate',
-      pointId: data.PointId || data.pointId,
-      value: data.Value || data.value || '',
-      status: data.Status || data.status || 'Unknown',
-      updateTime: data.UpdateTime || data.updateTime || new Date().toISOString()
+      type: data.type || data.Type || 'PointUpdate',
+      pointId: data.pointId || data.PointId,
+      value: data.value || data.Value || '',
+      status: data.status || data.Status || 'Unknown',
+      updateTime: data.updateTime || data.UpdateTime || new Date().toISOString()
     }
   }
 
   // 标准化批量点位更新数据格式，处理后端可能的大小写变化
   private normalizeBatchPointsUpdateData(msg: any): PointUpdateItem[] {
-    const updates = msg?.updates || msg?.Updates || []
+    const updates = (msg as any)?.updates || (msg as any)?.Updates || []
     
     return updates.map((update: any) => ({
-      pointId: update.PointId || update.pointId,
-      value: update.Value || update.value || '',
-      status: update.Status || update.status || 'Unknown',
-      updateTime: update.UpdateTime || update.updateTime || new Date().toISOString()
+      pointId: update.pointId || update.PointId,
+      value: update.value || update.Value || '',
+      status: update.status || update.Status || 'Unknown',
+      updateTime: update.updateTime || update.UpdateTime || new Date().toISOString()
     }))
   }
 
   // 标准化点位状态变更数据格式，处理后端可能的大小写变化
   private normalizePointStatusChangeData(data: any): PointStatusChangeData {
     return {
-      type: data.Type || data.type || 'PointStatusChange',
-      pointId: data.PointId || data.pointId,
-      status: data.Status || data.status || 'Unknown',
-      updateTime: data.UpdateTime || data.updateTime || new Date().toISOString()
+      type: data.type || data.Type || 'PointStatusChange',
+      pointId: data.pointId || data.PointId,
+      status: data.status || data.Status || 'Unknown',
+      updateTime: data.updateTime || data.UpdateTime || new Date().toISOString()
     }
   }
 
   // 验证单个点位更新数据格式
   private validatePointUpdateData(data: any): data is PointUpdateData {
-    const pointId = data.PointId || data.pointId
-    const value = data.Value || data.value
-    const status = data.Status || data.status
-    const updateTime = data.UpdateTime || data.updateTime
-    const type = data.Type || data.type
+    const pointId = data.pointId || data.PointId
+    const value = data.value || data.Value
+    const status = data.status || data.Status
+    const updateTime = data.updateTime || data.UpdateTime
     
     return data &&
-      typeof type === 'string' &&
       typeof pointId === 'number' &&
       typeof value === 'string' &&
       typeof status === 'string' &&
@@ -701,34 +878,53 @@ class DataCollectionSignalR {
 
   // 验证批量点位更新消息格式
   private validateBatchPointsUpdateMessage(msg: any): msg is BatchPointsUpdateMessage {
-    return msg &&
-      typeof msg.type === 'string' &&
-      Array.isArray(msg.updates) &&
-      msg.updates.every((update: any) => 
-        typeof update.pointId === 'number' &&
-        typeof update.value === 'string' &&
-        typeof update.status === 'string' &&
-        typeof update.updateTime === 'string'
-      ) &&
-      typeof msg.updateTime === 'string'
+    const updates = (msg as any)?.updates || (msg as any)?.Updates
+    if (!msg || !Array.isArray(updates)) {
+      return false
+    }
+    
+    // 验证每个update项的结构
+    return updates.every((update: any) => {
+      const pointId = update.pointId || update.PointId
+      const value = update.value || update.Value
+      const status = update.status || update.Status
+      const updateTime = update.updateTime || update.UpdateTime
+      
+      return typeof pointId === 'number' &&
+             typeof value === 'string' &&
+             typeof status === 'string' &&
+             typeof updateTime === 'string'
+    })
   }
 
   // 调试批量点位更新消息格式
   private debugBatchPointsUpdateMessage(msg: any) {
     console.log('🔍 Debug batch points update message validation:')
     console.log('  - msg exists:', !!msg)
+    console.log('  - msg.Type:', msg?.Type, 'type:', typeof msg?.Type)
     console.log('  - msg.type:', msg?.type, 'type:', typeof msg?.type)
+    console.log('  - msg.Updates exists:', !!msg?.Updates)
     console.log('  - msg.updates exists:', !!msg?.updates)
+    console.log('  - msg.Updates is array:', Array.isArray(msg?.Updates))
     console.log('  - msg.updates is array:', Array.isArray(msg?.updates))
+    console.log('  - msg.Updates length:', msg?.Updates?.length)
     console.log('  - msg.updates length:', msg?.updates?.length)
+    console.log('  - msg.UpdateTime:', msg?.UpdateTime, 'type:', typeof msg?.UpdateTime)
     console.log('  - msg.updateTime:', msg?.updateTime, 'type:', typeof msg?.updateTime)
+    console.log('  - msg.Count:', msg?.Count, 'type:', typeof msg?.Count)
+    console.log('  - msg.count:', msg?.count, 'type:', typeof msg?.count)
     
-    if (msg?.updates && Array.isArray(msg.updates)) {
-      msg.updates.forEach((update: any, index: number) => {
+    const updates = msg?.Updates || msg?.updates
+    if (updates && Array.isArray(updates)) {
+      updates.forEach((update: any, index: number) => {
         console.log(`  - Update ${index}:`)
+        console.log(`    - PointId:`, update?.PointId, 'type:', typeof update?.PointId)
         console.log(`    - pointId:`, update?.pointId, 'type:', typeof update?.pointId)
+        console.log(`    - Value:`, update?.Value, 'type:', typeof update?.Value)
         console.log(`    - value:`, update?.value, 'type:', typeof update?.value)
+        console.log(`    - Status:`, update?.Status, 'type:', typeof update?.Status)
         console.log(`    - status:`, update?.status, 'type:', typeof update?.status)
+        console.log(`    - UpdateTime:`, update?.UpdateTime, 'type:', typeof update?.UpdateTime)
         console.log(`    - updateTime:`, update?.updateTime, 'type:', typeof update?.updateTime)
       })
     }
@@ -736,28 +932,35 @@ class DataCollectionSignalR {
 
   // 验证点位状态变更数据格式
   private validatePointStatusChangeData(data: any): data is PointStatusChangeData {
+    const pointId = data.pointId || data.PointId
+    const status = data.status || data.Status
+    const updateTime = data.updateTime || data.UpdateTime
+    
     return data &&
-      typeof data.type === 'string' &&
-      typeof data.pointId === 'number' &&
-      typeof data.status === 'string' &&
-      typeof data.updateTime === 'string'
+      typeof pointId === 'number' &&
+      typeof status === 'string' &&
+      typeof updateTime === 'string'
   }
 
   // 验证点位移除数据格式
   private validatePointRemovedData(data: any): data is PointRemovedData {
+    const pointId = data.pointId || data.PointId
+    const updateTime = data.updateTime || data.UpdateTime
+    
     return data &&
-      typeof data.type === 'string' &&
-      typeof data.pointId === 'number' &&
-      typeof data.updateTime === 'string'
+      typeof pointId === 'number' &&
+      typeof updateTime === 'string'
   }
 
   // 验证批量点位移除数据格式
   private validateBatchPointsRemovedData(data: any): data is BatchPointsRemovedData {
+    const pointIds = data.pointIds || data.PointIds
+    const updateTime = data.updateTime || data.UpdateTime
+    
     return data &&
-      typeof data.type === 'string' &&
-      Array.isArray(data.pointIds) &&
-      data.pointIds.every((id: any) => typeof id === 'number') &&
-      typeof data.updateTime === 'string'
+      Array.isArray(pointIds) &&
+      pointIds.every((id: any) => typeof id === 'number') &&
+      typeof updateTime === 'string'
   }
 }
 
@@ -770,5 +973,10 @@ export type {
   BatchPointsUpdateMessage,
   PointStatusChangeData,
   PointRemovedData,
-  BatchPointsRemovedData
+  BatchPointsRemovedData,
+  SubscriptionStatus,
+  ConnectionStatistics,
+  HierarchyCacheResult,
+  SubscriptionConfirmed,
+  UnsubscriptionConfirmed
 }
