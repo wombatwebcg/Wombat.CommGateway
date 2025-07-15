@@ -1,10 +1,13 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+	<EnableEmbeddedFilesManifest>true</EnableEmbeddedFilesManifest>
+	<OutputType>Library</OutputType>
+	<EnableDefaultContentItems>false</EnableDefaultContentItems>
   </PropertyGroup>
+
 
 
 	<ItemGroup>
@@ -35,5 +38,13 @@
   <ItemGroup>
     <Folder Include="Services\" />
   </ItemGroup>
+
+
+	<ItemGroup>
+		<Content Include="wwwroot\gateway\**\*.*"
+				 Pack="true"
+				 PackagePath="contentFiles\any\any\frontend\"
+				 CopyToOutputDirectory="PreserveNewest" />
+	</ItemGroup>
 
 </Project>

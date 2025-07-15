@@ -1,3 +1,4 @@
+using Wombat.CommGateway.Api.Extensions;
 using Wombat.CommGateway.API.Modules;
 
 namespace Wombat.CommGateway.Web
@@ -19,6 +20,8 @@ namespace Wombat.CommGateway.Web
 
             // 使用API模块中间件管道
             app.UseApiModule(builder.Configuration);
+
+            app.UseGatewayFrontend("/gateway");
 
             app.Run();
         }

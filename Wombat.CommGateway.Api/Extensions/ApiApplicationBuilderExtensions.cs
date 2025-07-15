@@ -9,6 +9,8 @@ using Wombat.CommGateway.Application.Services;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.WebSockets;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.FileProviders;
+using Wombat.CommGateway.API.Controllers;
 
 namespace Wombat.CommGateway.API.Extensions
 {
@@ -99,13 +101,23 @@ namespace Wombat.CommGateway.API.Extensions
                         }
                     });
                 }
+
+
             });
+
+
+            //app.MapGet("/vue", async context =>
+            //{
+            //    context.Response.ContentType = "text/html";
+            //    await context.Response.SendFileAsync(Path.Combine(app.Environment.WebRootPath, "vue", "index.html"));
+            //});
 
             // 配置Swagger
             if (apiOptions.Middleware.EnableSwagger)
             {
                 app.ConfigureSwagger();
             }
+            app.UseDefaultFiles();
 
             return app;
         }
@@ -159,7 +171,8 @@ namespace Wombat.CommGateway.API.Extensions
             app.UseStaticFiles(new StaticFileOptions
             {
                 ServeUnknownFileTypes = true,
-                DefaultContentType = "application/octet-stream"
+                DefaultContentType = "application/octet-stream",
+
             });
 
             return app;
