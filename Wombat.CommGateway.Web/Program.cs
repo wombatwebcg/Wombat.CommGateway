@@ -1,3 +1,5 @@
+using Wombat.CommGateway.API.Modules;
+
 namespace Wombat.CommGateway.Web
 {
     public class Program
@@ -6,18 +8,17 @@ namespace Wombat.CommGateway.Web
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            // Add services to the container.
-
-            builder.Services.AddControllers();
+            // 使用API模块，一键启用所有API功能
+            builder.AddApiModule(options =>
+            {
+                // 可以在这里自定义配置选项
+                // 例如：options.Middleware.EnableSwagger = false;
+            });
 
             var app = builder.Build();
 
-            // Configure the HTTP request pipeline.
-
-            app.UseAuthorization();
-
-
-            app.MapControllers();
+            // 使用API模块中间件管道
+            app.UseApiModule(builder.Configuration);
 
             app.Run();
         }
