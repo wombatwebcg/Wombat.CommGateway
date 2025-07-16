@@ -96,7 +96,7 @@ namespace Wombat.CommGateway.Api.Extensions
                     !path.StartsWith("/api") &&
                     path.StartsWith("/gateway"))
                 {
-                    context.Request.Path = "/gateway/index.html";
+                    context.Request.Path = "/gateway/login";
                 }
 
                 await next();

@@ -2,7 +2,7 @@
   <div class="login-container">
     <div class="login-box">
       <div class="login-header">
-        <img src="@/assets/logo.png" alt="Logo" class="logo" />
+        <img src="/favicon.ico" alt="Logo" class="logo" />
         <h2>工业网关管理系统</h2>
       </div>
       

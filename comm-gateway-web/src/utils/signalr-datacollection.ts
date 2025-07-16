@@ -369,8 +369,19 @@ class DataCollectionSignalR {
   async connect() {
     if (this.connection) return
     
-    // 使用环境变量构建完整的连接URL
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+    // 动态加载config.json
+    let baseUrl = 'http://localhost:5000'
+    try {
+      const resp = await fetch('/gateway/config.json', { cache: 'no-store' })
+      if (resp.ok) {
+        const config = await resp.json()
+        if (config.API_BASE_URL) {
+          baseUrl = config.API_BASE_URL
+        }
+      }
+    } catch (e) {
+      console.warn('未能加载config.json，使用默认baseUrl:', baseUrl)
+    }
     const hubUrl = `${baseUrl}/ws/datacollection`
     
     console.log('🔗 SignalR connecting to:', hubUrl)

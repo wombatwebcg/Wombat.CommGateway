@@ -271,3 +271,52 @@ Prompt: 用户、权限、全局配置管理。
 ---
 
 *以上文档可直接作为项目启动的需求模板，并可在开发过程中持续迭代。*
+
+## 运行时配置API/SignalR后端地址（第三方部署指南）
+
+前端打包后，API和SignalR后端地址可通过 `public/config.json` 文件动态配置，无需重新打包：
+
+```json
+{
+  "API_BASE_URL": "http://your-api-server:5000"
+}
+```
+
+- 第三方只需修改 `config.json` 中的 `API_BASE_URL`，即可切换后端服务地址和端口。
+- SignalR和所有API请求会自动读取此配置。
+- `config.json` 路径为 `/gateway/config.json`（与前端部署路径一致）。
+
+### 配置网页名称和icon（推荐）
+
+将你的logo.png放在public目录下，打包后路径为/gateway/logo.png。
+
+在 `public/config.json` 中添加如下字段：
+
+```json
+{
+  "WEB_TITLE": "自定义网页名称",
+  "WEB_ICON": "/gateway/logo.png"
+}
+```
+- `WEB_TITLE`：网页标题（浏览器tab显示的名称）
+- `WEB_ICON`：网页icon路径（推荐/gateway/logo.png）
+
+> 注意：vite.svg已废弃，不再作为默认icon。
+
+### 最佳实践：自定义favicon和logo
+
+- favicon（网页icon）：将你的favicon.ico放在public目录，打包后路径为/gateway/favicon.ico。
+- logo（页面logo）：将你的logo.png放在public目录，打包后路径为/gateway/logo.png。
+- 所有页面和配置文件引用时都用`/logo.png`或`/favicon.ico`，无需加base前缀。
+- 用户只需替换public/logo.png和public/favicon.ico，无需改动代码或重新打包。
+
+在 `public/config.json` 中可选配置如下字段：
+
+```json
+{
+  "WEB_TITLE": "自定义网页名称",
+  "WEB_ICON": "/favicon.ico"
+}
+```
+- `WEB_TITLE`：网页标题（浏览器tab显示的名称）
+- `WEB_ICON`：网页icon路径（推荐/favicon.ico）

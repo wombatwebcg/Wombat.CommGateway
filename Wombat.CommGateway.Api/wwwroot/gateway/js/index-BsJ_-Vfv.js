@@ -1,1 +1,0 @@
-import{d as e,c as s,e as a,g as o,j as r}from"./index-Bo2QAGFo.js";import{_ as t}from"./_plugin-vue_export-helper-BCo6x5W8.js";const n={class:"config-container"},i=t(e({__name:"index",setup:e=>(e,t)=>{const i=o("router-view");return r(),s("div",n,[a(i)])}}),[["__scopeId","data-v-72c73fad"]]);export{i as default};

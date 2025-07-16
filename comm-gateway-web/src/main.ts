@@ -30,6 +30,26 @@ app.use(router)
 // 使用Element Plus
 app.use(ElementPlus)
 
+// 动态设置网页title和icon
+fetch('/gateway/config.json', { cache: 'no-store' })
+  .then(resp => resp.json())
+  .then(config => {
+    if (config.WEB_TITLE) {
+      document.title = config.WEB_TITLE
+    }
+    if (config.WEB_ICON) {
+      let icon = document.querySelector('link[rel~="icon"]') as HTMLLinkElement
+      if (!icon) {
+        icon = document.createElement('link')
+        icon.rel = 'icon'
+        document.head.appendChild(icon)
+      }
+      icon.type = 'image/png'
+      icon.href = config.WEB_ICON
+    }
+  })
+  .catch(() => {})
+
 // 挂载应用
 app.mount('#app')
 

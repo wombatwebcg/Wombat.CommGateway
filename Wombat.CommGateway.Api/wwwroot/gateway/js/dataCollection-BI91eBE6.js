@@ -1,1 +1,0 @@
-import{s as t}from"./index-Bo2QAGFo.js";function o(){return t({url:"/api/DataCollection/restart",method:"post"})}function a(o,a){return t({url:`/api/DataCollection/point/${o}/write`,method:"post",headers:{"Content-Type":"application/json"},data:a})}export{o as r,a as w};

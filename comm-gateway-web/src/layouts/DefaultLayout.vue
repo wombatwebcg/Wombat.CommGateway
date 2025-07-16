@@ -4,7 +4,7 @@
   <el-container class="layout-container">
     <el-aside :width="isCollapse ? '80px' : '220px'" class="aside">
       <div class="logo">
-        <img src="../assets/logo.png" alt="Logo" />
+        <img src="/favicon.ico" alt="Logo" />
         <span v-show="!isCollapse">工业网关</span>
       </div>
       <el-menu
