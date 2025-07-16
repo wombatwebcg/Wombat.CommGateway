@@ -22,8 +22,29 @@ namespace Wombat.CommGateway.Api.Extensions
             app.UseStaticFiles(new StaticFileOptions
             {
                 FileProvider = new PhysicalFileProvider(vuePath),
-                RequestPath = requestPath
-                //RequestPath = ""
+                RequestPath = requestPath,
+                OnPrepareResponse = ctx =>
+                {
+                    // 为静态文件添加缓存控制头
+                    var path = ctx.File.PhysicalPath;
+                    if (path != null)
+                    {
+                        var extension = Path.GetExtension(path).ToLowerInvariant();
+                        
+                        // 对于JS、CSS等静态资源，设置较长的缓存时间
+                        if (extension == ".js" || extension == ".css" || extension == ".svg" || extension == ".png")
+                        {
+                            ctx.Context.Response.Headers.Append("Cache-Control", "public, max-age=31536000, immutable");
+                        }
+                        // 对于HTML文件，禁用缓存
+                        else if (extension == ".html")
+                        {
+                            ctx.Context.Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
+                            ctx.Context.Response.Headers.Append("Pragma", "no-cache");
+                            ctx.Context.Response.Headers.Append("Expires", "0");
+                        }
+                    }
+                }
             });
 
 
@@ -72,7 +93,8 @@ namespace Wombat.CommGateway.Api.Extensions
 
                 if (!Path.HasExtension(path) &&
                     !path.StartsWith("/swagger") &&
-                    !path.StartsWith("/api"))
+                    !path.StartsWith("/api") &&
+                    path.StartsWith("/gateway"))
                 {
                     context.Request.Path = "/gateway/index.html";
                 }

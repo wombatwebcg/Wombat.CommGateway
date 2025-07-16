@@ -1,0 +1,1 @@
+import{s as e}from"./index-Bo2QAGFo.js";function t(){return e({url:"/api/DeviceGroup",method:"get"})}function r(t){return e({url:"/api/DeviceGroup",method:"post",data:t})}function u(t,r){return e({url:`/api/DeviceGroup/${t}`,method:"put",data:r})}function o(t){return e({url:`/api/DeviceGroup/${t}`,method:"delete"})}export{r as c,o as d,t as g,u};
