@@ -1,0 +1,12 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Target Name="CopyGatewayStaticFilesToOutput" AfterTargets="Build">
+    <ItemGroup>
+      <WombatStaticFiles Include="$(MSBuildThisPackageDirectory)contentFiles\any\any\wwwroot\gateway\**\*" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(WombatStaticFiles)"
+      DestinationFiles="@(WombatStaticFiles->'$(OutDir)wwwroot\gateway\%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+    />
+  </Target>
+</Project>

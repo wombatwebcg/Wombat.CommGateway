@@ -1,13 +1,47 @@
+﻿
 <Project Sdk="Microsoft.NET.Sdk.Web">
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+	</PropertyGroup>
 
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-  </PropertyGroup>
+	<ItemGroup>
+		<PackageReference Include="Wombat.CommGateway.Api" Version="1.0.5-pre" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\Wombat.CommGateway.Api\Wombat.CommGateway.Api.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+	  <None Update="Database\gateway.db3">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	</ItemGroup>
 
+    <!-- 手动指定wombat.commgateway.api包版本，升级包时请同步修改此处 -->
+    <PropertyGroup>
+      <WombatApiVersion>1.0.5-pre</WombatApiVersion> <!-- TODO: 升级包时同步修改此处 -->
+      <LatestWombatPackagePath>$(NuGetPackageRoot)wombat.commgateway.api\$(WombatApiVersion)</LatestWombatPackagePath>
+      <WombatWwwrootPath>$(LatestWombatPackagePath)\wwwroot\</WombatWwwrootPath>
+    </PropertyGroup>
+
+    <!-- 复制wombat.commgateway.api的wwwroot资源到输出目录 -->
+    <Target Name="CopyWombatPackageAssets" AfterTargets="Build">
+      <!-- 收集 wwwroot 文件 -->
+      <ItemGroup Condition="Exists('$(WombatWwwrootPath)')">
+        <WombatWwwrootFiles Include="$(WombatWwwrootPath)**\*" />
+      </ItemGroup>
+
+      <!-- 复制 -->
+      <Copy Condition="Exists('$(WombatWwwrootPath)')"
+            SourceFiles="@(WombatWwwrootFiles)"
+            DestinationFiles="@(WombatWwwrootFiles->'$(OutputPath)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')"
+            SkipUnchangedFiles="true" />
+
+      <Message Importance="high" Text="复制了 @(WombatWwwrootFiles->Count()) 个文件，从 $(WombatWwwrootPath) 到 $(OutputPath)wwwroot\" />
+      <Error Condition="!Exists('$(WombatWwwrootPath)')" Text="未找到 wwwroot 资源目录: $(WombatWwwrootPath)" />
+    </Target>
+
+	<!-- 清理时删除复制的文件 -->
+	<Target Name="CleanWombatAssets" AfterTargets="Clean">
+		<RemoveDir Directories="$(OutputPath)wwwroot" Condition="Exists('$(OutputPath)wwwroot')" />
+	</Target>
 </Project>

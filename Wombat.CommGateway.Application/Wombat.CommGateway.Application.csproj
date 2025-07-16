@@ -4,10 +4,16 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+	  <Version>1.0.1-pre</Version>
+	  <Authors>WombatWeb</Authors>
+	  <Company>WombatWeb</Company>
+	  <PackageId>Wombat.CommGateway.Application</PackageId>
+	  <Product>Wombat.CommGateway</Product>
   </PropertyGroup>
 
   <ItemGroup>
-	  <ProjectReference Include="..\Wombat.CommGateway.Infrastructure\Wombat.CommGateway.Infrastructure.csproj" />
+	  <ProjectReference Include="..\Wombat.CommGateway.Infrastructure\Wombat.CommGateway.Infrastructure.csproj">
+	  </ProjectReference>
 
   </ItemGroup>
 

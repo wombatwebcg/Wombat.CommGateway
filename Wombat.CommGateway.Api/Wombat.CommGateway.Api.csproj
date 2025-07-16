@@ -1,11 +1,18 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-	<EnableEmbeddedFilesManifest>true</EnableEmbeddedFilesManifest>
 	<OutputType>Library</OutputType>
-	<EnableDefaultContentItems>false</EnableDefaultContentItems>
+	 <IsPackable>true</IsPackable>
+	 <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+	 <IncludeContentInPack>true</IncludeContentInPack>
+	 <ContentTargetFolders>contentFiles;content;wwwroot</ContentTargetFolders>
+	<Version>1.0.5-pre</Version>
+	<Authors>WombatWeb</Authors>
+	<Company>WombatWeb</Company>
+	<PackageId>Wombat.CommGateway.Api</PackageId>
+	<Product>Wombat.CommGateway</Product>
   </PropertyGroup>
 
 
@@ -27,24 +34,36 @@
 		<PackageReference Include="NSwag.AspNetCore" Version="14.4.0" />
 		<PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="8.0.15" />
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+		<PackageReference Include="System.ComponentModel.Annotations" Version="5.0.0" />
 	</ItemGroup>
 
 
-  <ItemGroup>
-    <ProjectReference Include="..\Wombat.CommGateway.Application\Wombat.CommGateway.Application.csproj" />
 
-  </ItemGroup>
-
+	
   <ItemGroup>
     <Folder Include="Services\" />
   </ItemGroup>
 
-
+	
 	<ItemGroup>
-		<Content Include="wwwroot\gateway\**\*.*"
-				 Pack="true"
-				 PackagePath="contentFiles\any\any\frontend\"
-				 CopyToOutputDirectory="PreserveNewest" />
+		<!-- 使用None而非Content避免冲突 -->
+		<None Include="wwwroot\**\*"
+			  Pack="true"
+			  PackagePath="wwwroot"
+			  CopyToOutputDirectory="PreserveNewest">
+			<!-- 关键：声明为内容文件 -->
+			<PackageCopyToOutput>true</PackageCopyToOutput>
+		</None>
+	</ItemGroup>
+	<ItemGroup>
+	  <ProjectReference Include="..\Wombat.CommGateway.Application\Wombat.CommGateway.Application.csproj" />
 	</ItemGroup>
 
+	<!--<ItemGroup>
+		<None Include="build\Wombat.CommGateway.Api.targets"
+			  Pack="true"
+			  PackagePath="build\" />
+	</ItemGroup>-->
+	
 </Project>
+

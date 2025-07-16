@@ -4,6 +4,11 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+	  <Version>1.0.1-pre</Version>
+	  <Authors>WombatWeb</Authors>
+	  <Company>WombatWeb</Company>
+	  <PackageId>Wombat.CommGateway.Infrastructure</PackageId>
+	  <Product>Wombat.CommGateway</Product>
   </PropertyGroup>
 	<ItemGroup>
 		<PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
@@ -20,7 +25,8 @@
 		<PackageReference Include="NModbus" Version="3.0.78" />
 	</ItemGroup>
   <ItemGroup>
-	  <ProjectReference Include="..\Wombat.CommGateway.Domain\Wombat.CommGateway.Domain.csproj" />
+	  <ProjectReference Include="..\Wombat.CommGateway.Domain\Wombat.CommGateway.Domain.csproj">
+	  </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <None Update="Database\gateway.db3">
