@@ -13,7 +13,7 @@ export default defineConfig(({ command, mode }) => {
     // 如果部署在子路径下，例如 /app/，则使用 '/app/'
     // 如果是在根路径，则使用 '/'
     // 如果需要相对路径，使用 './'
-    base: './',
+    base: '/gateway/',
     plugins: [
       vue(),
       // 使用Element Plus插件（备选方案，目前注释掉）

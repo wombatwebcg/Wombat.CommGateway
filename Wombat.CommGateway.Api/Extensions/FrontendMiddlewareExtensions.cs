@@ -23,7 +23,9 @@ namespace Wombat.CommGateway.Api.Extensions
             {
                 FileProvider = new PhysicalFileProvider(vuePath),
                 RequestPath = requestPath
+                //RequestPath = ""
             });
+
 
             // Vue Router fallback (404 -> index.html)
             app.Use(async (context, next) =>
@@ -40,8 +42,13 @@ namespace Wombat.CommGateway.Api.Extensions
                 }
             });
 
-            // 注入路由以便主项目注册 MapGet
-            app.UseRouting();
+
+
+
+
+
+            //// 注入路由以便主项目注册 MapGet
+            //app.UseRouting();
 
             app.UseEndpoints(endpoints =>
             {
@@ -51,8 +58,27 @@ namespace Wombat.CommGateway.Api.Extensions
                     context.Response.ContentType = "text/html";
                     await context.Response.SendFileAsync(Path.Combine(vuePath, "index.html"));
                 });
-            });
 
+                endpoints.MapFallbackToFile("index.html", new StaticFileOptions
+                 {
+                     FileProvider = new PhysicalFileProvider(
+                    Path.Combine(AppContext.BaseDirectory, "wwwroot", "gateway")
+                )
+                 });
+            });
+            app.Use(async (context, next) =>
+            {
+                var path = context.Request.Path.Value;
+
+                if (!Path.HasExtension(path) &&
+                    !path.StartsWith("/swagger") &&
+                    !path.StartsWith("/api"))
+                {
+                    context.Request.Path = "/gateway/index.html";
+                }
+
+                await next();
+            });
             return app;
         }
     }
